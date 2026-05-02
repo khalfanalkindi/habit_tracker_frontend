@@ -42,13 +42,11 @@ export function LoginForm() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="email">
-                  {apiMode ? "البريد أو اسم المستخدم أو الاسم الظاهر" : "البريد الإلكتروني"}
-                </FieldLabel>
+                <FieldLabel htmlFor="email">البريد أو اسم المستخدم أو الاسم الظاهر</FieldLabel>
                 <Input
                   id="email"
-                  type={apiMode ? "text" : "email"}
-                  placeholder={apiMode ? "you@example.com أو اسم المستخدم" : "example@email.com"}
+                  type="text"
+                  placeholder="you@example.com أو اسم المستخدم"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -79,7 +77,7 @@ export function LoginForm() {
               </p>
             )}
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading || !apiMode}>
               {isLoading ? (
                 <>
                   <Loader2 className="ml-2 h-4 w-4 animate-spin" />
@@ -90,37 +88,9 @@ export function LoginForm() {
               )}
             </Button>
 
-            {apiMode ? (
-              <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                الاتصال بالخادم مفعّل. استخدم نفس الحساب الذي أنشأته في لوحة الـ API. تأكد أن
-                {" "}
-                <code className="text-[0.7rem] bg-muted px-1 rounded" dir="ltr">
-                  NEXT_PUBLIC_APP_TOKEN
-                </code>
-                {" "}
-                مطابق لـ
-                {" "}
-                <code className="text-[0.7rem] bg-muted px-1 rounded" dir="ltr">
-                  APP_TOKEN
-                </code>
-                {" "}
-                على الخادم.
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                وضع تجريبي محلي. لتفعيل الخادم أضف في{" "}
-                <code className="text-[0.7rem] bg-muted px-1 rounded" dir="ltr">
-                  .env.local
-                </code>
-                :{" "}
-                <code className="text-[0.7rem] bg-muted px-1 rounded" dir="ltr">
-                  NEXT_PUBLIC_API_URL
-                </code>
-                {" و"}
-                <code className="text-[0.7rem] bg-muted px-1 rounded" dir="ltr">
-                  NEXT_PUBLIC_APP_TOKEN
-                </code>
-                {" ثم أعد تشغيل التطوير."}
+            {!apiMode && (
+              <p className="text-xs text-muted-foreground text-center">
+                أضف في Railway متغيرات الواجهة ثم أعد بناء النشر.
               </p>
             )}
           </form>

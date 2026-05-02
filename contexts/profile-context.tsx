@@ -130,7 +130,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (!ready || !apiMode || !user || user.id === "demo") return
+    if (!ready || !apiMode || !user) return
     let cancelled = false
     apiGetProfile()
       .then((server) => {

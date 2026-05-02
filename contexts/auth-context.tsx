@@ -17,7 +17,7 @@ export type LoginResult = { ok: true } | { ok: false; message: string }
 
 type AuthContextType = {
   user: AuthUser | null
-  /** True when NEXT_PUBLIC_API_URL + NEXT_PUBLIC_APP_TOKEN are set (read on client after mount). */
+  /** True when NEXT_PUBLIC_API_URL and token env are set (client mount). */
   apiMode: boolean
   isLoading: boolean
   login: (identifier: string, password: string) => Promise<LoginResult>
@@ -33,7 +33,8 @@ function loadUserFromStorage(): AuthUser | null {
   try {
     const u = JSON.parse(raw) as Partial<AuthUser>
     if (typeof u.email !== "string" || typeof u.name !== "string") return null
-    const id = typeof u.id === "string" && u.id ? u.id : "demo"
+    const id = typeof u.id === "string" && u.id ? u.id : ""
+    if (!id || id === "demo") return null
     return {
       id,
       email: u.email,
@@ -56,13 +57,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setApiMode(configured)
     const u = loadUserFromStorage()
     if (configured) {
-      if (u && u.id !== "demo") {
-        setUser(u)
-      } else if (u) {
+      if (u) setUser(u)
+    } else {
+      if (typeof window !== "undefined") {
         localStorage.removeItem(USER_KEY)
       }
-    } else if (u) {
-      setUser(u)
+      setUser(null)
     }
     setIsLoading(false)
   }, [])
@@ -73,32 +73,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!ident || !password) {
         return { ok: false, message: "أدخل اسم المستخدم أو البريد وكلمة المرور" }
       }
-      if (apiMode) {
-        try {
-          const data = await apiLogin(ident, password)
-          const nextUser: AuthUser = {
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.display_name,
-            username: data.user.username,
-          }
-          setUser(nextUser)
-          localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
-          return { ok: true }
-        } catch (e) {
-          const message = e instanceof Error ? e.message : "تعذر الاتصال بالخادم"
-          return { ok: false, message }
+      if (!apiMode) {
+        return {
+          ok: false,
+          message:
+            "إعداد الخادم غير مكتمل. أضف NEXT_PUBLIC_API_URL و NEXT_PUBLIC_APP_TOKEN أو NEXT_PUBLIC_API_KEY في الاستضافة ثم أعد بناء الواجهة.",
         }
       }
-      const nextUser: AuthUser = {
-        id: "demo",
-        email: ident,
-        name: ident.split("@")[0] || "مستخدم",
-        username: ident.split("@")[0] || "user",
+      try {
+        const data = await apiLogin(ident, password)
+        const nextUser: AuthUser = {
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.display_name,
+          username: data.user.username,
+        }
+        setUser(nextUser)
+        localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
+        return { ok: true }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "تعذر الاتصال بالخادم"
+        return { ok: false, message }
       }
-      setUser(nextUser)
-      localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
-      return { ok: true }
     },
     [apiMode]
   )
