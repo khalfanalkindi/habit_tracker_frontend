@@ -128,3 +128,8 @@
 .safe-area-pb {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* Keep scroll targets (e.g. focused inputs) above the fixed tab bar */
+html {
+  scroll-padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 9rem);
+}

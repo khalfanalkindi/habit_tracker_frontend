@@ -33,8 +33,8 @@ export function AppShell() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-      <main className="max-w-lg mx-auto">
+    <div className="min-h-dvh bg-background pb-[calc(env(safe-area-inset-bottom,0px)+9.5rem)]">
+      <main className="relative z-0 max-w-lg mx-auto">
         {activeTab === "dashboard" && <Dashboard />}
         {activeTab === "habits" && <HabitsPage />}
         {activeTab === "settings" && <SettingsPage />}

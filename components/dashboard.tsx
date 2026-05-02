@@ -74,7 +74,7 @@ export function Dashboard() {
   }, [profile.weightHistory])
 
   return (
-    <div className="p-4 pb-28 space-y-6">
+    <div className="p-4 pb-6 space-y-6">
       {/* Header */}
       <div className="space-y-1">
         <h1 className="text-2xl font-bold text-foreground">
