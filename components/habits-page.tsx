@@ -2,6 +2,9 @@
 
 import { useState } from "react"
 import { useHabits, DAYS_AR, DAYS_AR_SHORT, MEAL_TYPES, EXERCISE_TYPES } from "@/contexts/habits-context"
+import { useProfile } from "@/contexts/profile-context"
+import { HabitsWeightCard } from "@/components/habits-weight-card"
+import { CalorieBudgetAlert } from "@/components/calorie-budget-alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -86,6 +89,8 @@ export function HabitsPage() {
     removeExercise,
     getExercisesForDay,
   } = useHabits()
+
+  const { profile } = useProfile()
 
   const [activeTab, setActiveTab] = useState("food")
   const [foodSubTab, setFoodSubTab] = useState<"options" | "daily">("options")
@@ -192,6 +197,14 @@ export function HabitsPage() {
         <h1 className="text-2xl font-bold text-foreground">تسجيل العادات</h1>
         <p className="text-muted-foreground text-sm">سجل طعامك وتمارينك</p>
       </div>
+
+      <HabitsWeightCard />
+
+      <CalorieBudgetAlert
+        consumed={getDailyMacros(formatLocalYMD(now)).calories}
+        target={profile.dailyCaloriesTarget}
+        compact
+      />
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

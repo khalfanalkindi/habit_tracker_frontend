@@ -3,6 +3,7 @@ import { Tajawal } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/contexts/auth-context'
+import { ProfileProvider } from '@/contexts/profile-context'
 import { HabitsProvider } from '@/contexts/habits-context'
 import './globals.css'
 
@@ -67,9 +68,11 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            <HabitsProvider>
-              {children}
-            </HabitsProvider>
+            <ProfileProvider>
+              <HabitsProvider>
+                {children}
+              </HabitsProvider>
+            </ProfileProvider>
           </AuthProvider>
         </ThemeProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}

@@ -1,24 +1,58 @@
 "use client"
 
 import { useAuth } from "@/contexts/auth-context"
+import { useProfile } from "@/contexts/profile-context"
 import { useTheme } from "next-themes"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Field, FieldLabel } from "@/components/ui/field"
-import { LogOut, Moon, Sun, User, Smartphone } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { LogOut, Moon, Sun, User, Smartphone, Ruler, Scale, Target, Flame } from "lucide-react"
 import { useEffect, useState } from "react"
 
 export function SettingsPage() {
   const { user, logout } = useAuth()
+  const { profile, updateProfile, recordWeightKg } = useProfile()
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+
+  const [heightM, setHeightM] = useState("")
+  const [weightKg, setWeightKg] = useState("")
+  const [dailyCalories, setDailyCalories] = useState("")
+  const [weightGoal, setWeightGoal] = useState("")
 
   useEffect(() => {
     setMounted(true)
   }, [])
 
+  useEffect(() => {
+    setHeightM(profile.heightM != null ? String(profile.heightM) : "")
+    setWeightKg(profile.weightKg != null ? String(profile.weightKg) : "")
+    setDailyCalories(
+      profile.dailyCaloriesTarget != null ? String(profile.dailyCaloriesTarget) : ""
+    )
+    setWeightGoal(profile.weightGoalKg != null ? String(profile.weightGoalKg) : "")
+  }, [profile])
+
   const isDark = mounted && theme === "dark"
+
+  const handleSaveBodyStats = () => {
+    const hm = parseFloat(heightM.replace(",", "."))
+    const wk = parseFloat(weightKg.replace(",", "."))
+    const dc = parseInt(dailyCalories.replace(/\s/g, ""), 10)
+    const wg = parseFloat(weightGoal.replace(",", "."))
+
+    updateProfile({
+      heightM: Number.isFinite(hm) && hm > 0 ? hm : null,
+      weightKg: Number.isFinite(wk) && wk > 0 ? wk : null,
+      dailyCaloriesTarget: Number.isFinite(dc) && dc > 0 ? dc : null,
+      weightGoalKg: Number.isFinite(wg) && wg > 0 ? wg : null,
+    })
+    if (Number.isFinite(wk) && wk > 0) {
+      recordWeightKg(wk)
+    }
+  }
 
   return (
     <div className="p-4 pb-28 space-y-6">
@@ -46,6 +80,74 @@ export function SettingsPage() {
               <p className="text-sm text-muted-foreground">{user?.email || "user@example.com"}</p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Body & goals — stored locally until backend sync */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Ruler className="w-4 h-4" />
+            الجسم والأهداف
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            تُستخدم هذه القيم في لوحة التحكم (مؤشر كتلة الجسم، تنبيه السعرات). تُحفظ على جهازك فقط حالياً.
+          </p>
+          <div className="grid gap-3">
+            <Field>
+              <FieldLabel className="text-foreground flex items-center gap-2">
+                <Ruler className="w-3.5 h-3.5" />
+                الطول (م)
+              </FieldLabel>
+              <Input
+                inputMode="decimal"
+                placeholder="مثال: 1.75"
+                value={heightM}
+                onChange={(e) => setHeightM(e.target.value)}
+              />
+            </Field>
+            <Field>
+              <FieldLabel className="text-foreground flex items-center gap-2">
+                <Scale className="w-3.5 h-3.5" />
+                الوزن الحالي (كغ)
+              </FieldLabel>
+              <Input
+                inputMode="decimal"
+                placeholder="مثال: 78"
+                value={weightKg}
+                onChange={(e) => setWeightKg(e.target.value)}
+              />
+            </Field>
+            <Field>
+              <FieldLabel className="text-foreground flex items-center gap-2">
+                <Flame className="w-3.5 h-3.5" />
+                هدف السعرات اليومية
+              </FieldLabel>
+              <Input
+                inputMode="numeric"
+                placeholder="مثال: 2000"
+                value={dailyCalories}
+                onChange={(e) => setDailyCalories(e.target.value)}
+              />
+            </Field>
+            <Field>
+              <FieldLabel className="text-foreground flex items-center gap-2">
+                <Target className="w-3.5 h-3.5" />
+                هدف الوزن (كغ)
+              </FieldLabel>
+              <Input
+                inputMode="decimal"
+                placeholder="اختياري — مثال: 72"
+                value={weightGoal}
+                onChange={(e) => setWeightGoal(e.target.value)}
+              />
+            </Field>
+          </div>
+          <Button className="w-full" onClick={handleSaveBodyStats}>
+            حفظ الجسم والأهداف
+          </Button>
         </CardContent>
       </Card>
 

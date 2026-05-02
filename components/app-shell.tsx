@@ -12,7 +12,7 @@ type Tab = "dashboard" | "habits" | "settings"
 
 export function AppShell() {
   const { user, isLoading } = useAuth()
-  const [activeTab, setActiveTab] = useState<Tab>("habits")
+  const [activeTab, setActiveTab] = useState<Tab>("dashboard")
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
