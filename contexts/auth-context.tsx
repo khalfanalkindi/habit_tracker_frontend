@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return {
           ok: false,
           message:
-            "إعداد الخادم غير مكتمل. أضف NEXT_PUBLIC_API_URL و NEXT_PUBLIC_APP_TOKEN أو NEXT_PUBLIC_API_KEY في الاستضافة ثم أعد بناء الواجهة.",
+            "الواجهة لم تُبنَ مع عنوان الخادم والرمز. في Railway أعد نشر خدمة الواجهة (Deploy) حتى يمرّ البناء ويُضمَّن NEXT_PUBLIC_API_URL و NEXT_PUBLIC_API_KEY أو NEXT_PUBLIC_APP_TOKEN.",
         }
       }
       try {

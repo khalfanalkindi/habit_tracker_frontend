@@ -13,7 +13,7 @@ export function LoginForm() {
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const { login, apiMode } = useAuth()
+  const { login } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -77,7 +77,7 @@ export function LoginForm() {
               </p>
             )}
 
-            <Button type="submit" className="w-full" disabled={isLoading || !apiMode}>
+            <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="ml-2 h-4 w-4 animate-spin" />
@@ -87,12 +87,6 @@ export function LoginForm() {
                 "تسجيل الدخول"
               )}
             </Button>
-
-            {!apiMode && (
-              <p className="text-xs text-muted-foreground text-center">
-                أضف في Railway متغيرات الواجهة ثم أعد بناء النشر.
-              </p>
-            )}
           </form>
         </CardContent>
       </Card>
