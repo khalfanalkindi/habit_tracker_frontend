@@ -13,6 +13,9 @@ next.user-config.*
 !.env.example
 .env*.local
 
+# Generated at container start (Docker); never commit secrets
+public/runtime-env.json
+
 # Common ignores
 node_modules
 .next/

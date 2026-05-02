@@ -10,7 +10,7 @@ Use this repo as its **own** Railway service. The API lives in your **backend** 
 | `NEXT_PUBLIC_APP_TOKEN` | **Same string** as backend `APP_TOKEN`. Sent as `Authorization: Bearer …` on every API call. |
 | `NEXT_PUBLIC_API_KEY` | Optional **legacy** alias for the same value if you already created this variable; prefer `NEXT_PUBLIC_APP_TOKEN` for new projects. |
 
-**Why login still fails after you set variables:** Next.js bakes `NEXT_PUBLIC_*` into the JS bundle at **`pnpm build`** inside Docker. The `Dockerfile` forwards these names into the build stage; you must **redeploy** (new build) after changing them. A trailing slash on the URL is fine — the app strips it.
+**Runtime config:** Even when the Next bundle was built without `NEXT_PUBLIC_*`, the container runs `write-runtime-env.cjs` before `server.js` and writes `public/runtime-env.json` from Railway’s environment. The browser loads that file on startup so your existing `NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_API_KEY` variables work after a normal deploy.
 
 ## Service setup
 

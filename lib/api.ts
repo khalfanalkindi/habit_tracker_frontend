@@ -1,18 +1,11 @@
 /**
  * Backend API client.
- * Set NEXT_PUBLIC_API_URL and a shared token: NEXT_PUBLIC_APP_TOKEN (preferred) or
- * NEXT_PUBLIC_API_KEY (legacy name — same value as server APP_TOKEN).
+ * URL + token: NEXT_PUBLIC_* at build time, or /runtime-env.json at runtime (see Dockerfile).
  */
 
-export function getApiConfig() {
-  const base = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "")
-  const appToken = (
-    process.env.NEXT_PUBLIC_APP_TOKEN ??
-    process.env.NEXT_PUBLIC_API_KEY ??
-    ""
-  ).trim()
-  return { baseUrl: base, appToken, configured: Boolean(base && appToken) }
-}
+import { getApiConfig } from "@/lib/api-config"
+
+export { getApiConfig, hydrateApiConfig } from "@/lib/api-config"
 
 function authHeaders(): HeadersInit {
   const { appToken } = getApiConfig()

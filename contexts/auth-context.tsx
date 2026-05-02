@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { createContext, useContext, useState, useEffect, useCallback } from "react"
-import { apiLogin, getApiConfig } from "@/lib/api"
+import { apiLogin, getApiConfig, hydrateApiConfig } from "@/lib/api"
 
 const USER_KEY = "habit-tracker-user"
 
@@ -17,7 +17,7 @@ export type LoginResult = { ok: true } | { ok: false; message: string }
 
 type AuthContextType = {
   user: AuthUser | null
-  /** True when NEXT_PUBLIC_API_URL and token env are set (client mount). */
+  /** True when API URL + token are available (build-time or runtime-env.json). */
   apiMode: boolean
   isLoading: boolean
   login: (identifier: string, password: string) => Promise<LoginResult>
@@ -53,31 +53,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const configured = getApiConfig().configured
-    setApiMode(configured)
-    const u = loadUserFromStorage()
-    if (configured) {
-      if (u) setUser(u)
-    } else {
-      if (typeof window !== "undefined") {
+    let cancelled = false
+    ;(async () => {
+      await hydrateApiConfig()
+      if (cancelled) return
+      const configured = getApiConfig().configured
+      setApiMode(configured)
+      const u = loadUserFromStorage()
+      if (configured) {
+        if (u) setUser(u)
+      } else {
         localStorage.removeItem(USER_KEY)
+        setUser(null)
       }
-      setUser(null)
+      setIsLoading(false)
+    })()
+    return () => {
+      cancelled = true
     }
-    setIsLoading(false)
   }, [])
 
   const login = useCallback(
     async (identifier: string, password: string): Promise<LoginResult> => {
+      await hydrateApiConfig()
       const ident = identifier.trim()
       if (!ident || !password) {
         return { ok: false, message: "أدخل اسم المستخدم أو البريد وكلمة المرور" }
       }
-      if (!apiMode) {
+      if (!getApiConfig().configured) {
         return {
           ok: false,
           message:
-            "الواجهة لم تُبنَ مع عنوان الخادم والرمز. في Railway أعد نشر خدمة الواجهة (Deploy) حتى يمرّ البناء ويُضمَّن NEXT_PUBLIC_API_URL و NEXT_PUBLIC_API_KEY أو NEXT_PUBLIC_APP_TOKEN.",
+            "لم يُحمّل عنوان الخادم أو الرمز. تحقق من متغيرات Railway ثم أعد نشر الواجهة (يُنشأ ملف runtime-env.json عند التشغيل).",
         }
       }
       try {
@@ -96,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, message }
       }
     },
-    [apiMode]
+    []
   )
 
   const logout = useCallback(() => {
