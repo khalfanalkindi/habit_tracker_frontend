@@ -13,7 +13,7 @@ export function LoginForm() {
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const { login } = useAuth()
+  const { login, apiMode } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,11 +48,13 @@ export function LoginForm() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="email">البريد الإلكتروني</FieldLabel>
+                <FieldLabel htmlFor="email">
+                  {apiMode ? "البريد أو اسم المستخدم أو الاسم الظاهر" : "البريد الإلكتروني"}
+                </FieldLabel>
                 <Input
                   id="email"
-                  type="email"
-                  placeholder="example@email.com"
+                  type={apiMode ? "text" : "email"}
+                  placeholder={apiMode ? "you@example.com أو اسم المستخدم" : "example@email.com"}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -91,7 +93,9 @@ export function LoginForm() {
             </Button>
 
             <p className="text-xs text-muted-foreground text-center">
-              تجريبي: استخدم أي بريد وكلمة مرور للدخول
+              {apiMode
+                ? "سجّل الدخول بالحساب الذي أنشأته من واجهة Swagger على الخادم."
+                : "تجريبي: استخدم أي بريد وكلمة مرور للدخول"}
             </p>
           </form>
         </CardContent>

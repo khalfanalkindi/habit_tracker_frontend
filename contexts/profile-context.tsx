@@ -3,6 +3,9 @@
 import type React from "react"
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 
+import { apiGetProfile, type ProfileRead } from "@/lib/api"
+import { useAuth } from "@/contexts/auth-context"
+
 const STORAGE_KEY = "habit-tracker-profile"
 
 export type WeightHistoryEntry = {
@@ -62,6 +65,23 @@ function todayLocalYMD(): string {
   return `${y}-${m}-${day}`
 }
 
+function mergeFromServer(local: UserProfile, server: ProfileRead): UserProfile {
+  const g = server.gender === "male" || server.gender === "female" ? server.gender : null
+  const b =
+    typeof server.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(server.birthday)
+      ? server.birthday
+      : null
+  return {
+    ...local,
+    heightM: server.heightM ?? null,
+    weightKg: server.weightKg ?? null,
+    dailyCaloriesTarget: server.dailyCaloriesTarget ?? null,
+    weightGoalKg: server.weightGoalKg ?? null,
+    birthday: b,
+    gender: g,
+  }
+}
+
 function loadProfile(): UserProfile {
   if (typeof window === "undefined") return defaultProfile
   try {
@@ -100,6 +120,7 @@ type ProfileContextType = {
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined)
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
+  const { accessToken, apiMode } = useAuth()
   const [profile, setProfileState] = useState<UserProfile>(defaultProfile)
   const [ready, setReady] = useState(false)
 
@@ -107,6 +128,23 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     setProfileState(loadProfile())
     setReady(true)
   }, [])
+
+  useEffect(() => {
+    if (!ready || !apiMode || !accessToken) return
+    let cancelled = false
+    apiGetProfile(accessToken)
+      .then((server) => {
+        if (!cancelled) {
+          setProfileState((prev) => mergeFromServer(prev, server))
+        }
+      })
+      .catch(() => {
+        /* keep local profile */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ready, apiMode, accessToken])
 
   useEffect(() => {
     if (!ready) return

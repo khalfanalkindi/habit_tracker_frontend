@@ -1,6 +1,7 @@
 "use client"
 
 import { useAuth } from "@/contexts/auth-context"
+import { apiPutProfile } from "@/lib/api"
 import { parseProfileBirthday, useProfile, type ProfileGender } from "@/contexts/profile-context"
 import { useTheme } from "next-themes"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,7 +20,7 @@ import { LogOut, Moon, Sun, User, Smartphone, Ruler, Scale, Target, Flame, Calen
 import { useEffect, useState } from "react"
 
 export function SettingsPage() {
-  const { user, logout } = useAuth()
+  const { user, logout, accessToken, apiMode } = useAuth()
   const { profile, updateProfile, recordWeightKg } = useProfile()
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
@@ -31,6 +32,7 @@ export function SettingsPage() {
   /** "" = unset; maps to profile.gender null */
   const [genderUi, setGenderUi] = useState<"" | ProfileGender>("")
   const [birthdayUi, setBirthdayUi] = useState("")
+  const [profileSyncError, setProfileSyncError] = useState("")
 
   useEffect(() => {
     setMounted(true)
@@ -49,7 +51,8 @@ export function SettingsPage() {
 
   const isDark = mounted && theme === "dark"
 
-  const handleSaveBodyStats = () => {
+  const handleSaveBodyStats = async () => {
+    setProfileSyncError("")
     const hm = parseFloat(heightM.replace(",", "."))
     const wk = parseFloat(weightKg.replace(",", "."))
     const dc = parseInt(dailyCalories.replace(/\s/g, ""), 10)
@@ -58,16 +61,35 @@ export function SettingsPage() {
     const birthday = birthdayUi.trim() === "" ? null : parseProfileBirthday(birthdayUi)
     const gender = genderUi === "" ? null : genderUi
 
+    const heightVal = Number.isFinite(hm) && hm > 0 ? hm : null
+    const weightVal = Number.isFinite(wk) && wk > 0 ? wk : null
+    const dcVal = Number.isFinite(dc) && dc > 0 ? dc : null
+    const wgVal = Number.isFinite(wg) && wg > 0 ? wg : null
+
     updateProfile({
-      heightM: Number.isFinite(hm) && hm > 0 ? hm : null,
-      weightKg: Number.isFinite(wk) && wk > 0 ? wk : null,
-      dailyCaloriesTarget: Number.isFinite(dc) && dc > 0 ? dc : null,
-      weightGoalKg: Number.isFinite(wg) && wg > 0 ? wg : null,
+      heightM: heightVal,
+      weightKg: weightVal,
+      dailyCaloriesTarget: dcVal,
+      weightGoalKg: wgVal,
       birthday,
       gender,
     })
     if (Number.isFinite(wk) && wk > 0) {
       recordWeightKg(wk)
+    }
+    if (apiMode && accessToken) {
+      try {
+        await apiPutProfile(accessToken, {
+          heightM: heightVal,
+          weightKg: weightVal,
+          dailyCaloriesTarget: dcVal,
+          weightGoalKg: wgVal,
+          birthday,
+          gender,
+        })
+      } catch {
+        setProfileSyncError("تعذر حفظ الملف على الخادم. تحقق من الاتصال.")
+      }
     }
   }
 
@@ -111,7 +133,10 @@ export function SettingsPage() {
         <CardContent className="space-y-4">
           <p className="text-xs text-muted-foreground leading-relaxed">
             تُستخدم الطول والوزن والأهداف في لوحة التحكم (مؤشر كتلة الجسم، تنبيه السعرات). تاريخ الميلاد والجنس
-            للملف فقط ولا يظهران في لوحة التحكم. تُحفظ البيانات على جهازك فقط حالياً.
+            للملف فقط ولا يظهران في لوحة التحكم.
+            {apiMode
+              ? " تُحفظ محلياً وتُزامن مع الخادم عند الضغط على حفظ."
+              : " تُحفظ على جهازك فقط حالياً."}
           </p>
           <div className="grid gap-3">
             <Field>
@@ -197,7 +222,10 @@ export function SettingsPage() {
               </Select>
             </Field>
           </div>
-          <Button className="w-full" onClick={handleSaveBodyStats}>
+          {profileSyncError ? (
+            <p className="text-sm text-destructive text-center">{profileSyncError}</p>
+          ) : null}
+          <Button className="w-full" onClick={() => void handleSaveBodyStats()}>
             حفظ الجسم والأهداف
           </Button>
         </CardContent>
