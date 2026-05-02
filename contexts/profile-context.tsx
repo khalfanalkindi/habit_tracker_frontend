@@ -12,6 +12,9 @@ export type WeightHistoryEntry = {
   weightKg: number
 }
 
+/** Matches backend ENUM / optional profile fields */
+export type ProfileGender = "male" | "female"
+
 export type UserProfile = {
   /** Height in meters */
   heightM: number | null
@@ -19,6 +22,9 @@ export type UserProfile = {
   weightKg: number | null
   dailyCaloriesTarget: number | null
   weightGoalKg: number | null
+  /** Optional; local calendar YYYY-MM-DD */
+  birthday: string | null
+  gender: ProfileGender | null
   weightHistory: WeightHistoryEntry[]
 }
 
@@ -27,7 +33,25 @@ const defaultProfile: UserProfile = {
   weightKg: null,
   dailyCaloriesTarget: null,
   weightGoalKg: null,
+  birthday: null,
+  gender: null,
   weightHistory: [],
+}
+
+/** Validate/normalize birthday from UI (YYYY-MM-DD) or return null. */
+export function parseProfileBirthday(raw: string): string | null {
+  const s = raw.trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null
+  const [y, mo, d] = s.split("-").map(Number)
+  if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return null
+  const dt = new Date(y, mo - 1, d)
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null
+  return s
+}
+
+function parseGender(raw: unknown): ProfileGender | null {
+  if (raw === "male" || raw === "female") return raw
+  return null
 }
 
 function todayLocalYMD(): string {
@@ -50,6 +74,8 @@ function loadProfile(): UserProfile {
       dailyCaloriesTarget:
         typeof parsed.dailyCaloriesTarget === "number" ? parsed.dailyCaloriesTarget : null,
       weightGoalKg: typeof parsed.weightGoalKg === "number" ? parsed.weightGoalKg : null,
+      birthday: typeof parsed.birthday === "string" ? parseProfileBirthday(parsed.birthday) : null,
+      gender: parseGender(parsed.gender),
       weightHistory: Array.isArray(parsed.weightHistory) ? parsed.weightHistory : [],
     }
   } catch {

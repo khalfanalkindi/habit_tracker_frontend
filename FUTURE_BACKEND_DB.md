@@ -1,6 +1,9 @@
 # Planned backend / database work (not implemented yet)
 
-Frontend currently stores profile, weight history, and calorie targets in **localStorage**. When you approve integration, align the API and MySQL schema roughly as follows.
+Frontend currently stores profile, weight history, and calorie targets in **localStorage**. MySQL DDL and a **field-by-field map** now live in the backend repo:  
+`habit_tracker_backend/db/PLANNED_SCHEMA_PROFILE_WEIGHT_CALORIES.md` and `habit_tracker_backend/db/alter_migrate_full_frontend_alignment.sql`.
+
+When you approve integration, align the API with that schema as follows.
 
 ## 1. User profile (height, targets, goal)
 

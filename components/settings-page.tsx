@@ -1,14 +1,21 @@
 "use client"
 
 import { useAuth } from "@/contexts/auth-context"
-import { useProfile } from "@/contexts/profile-context"
+import { parseProfileBirthday, useProfile, type ProfileGender } from "@/contexts/profile-context"
 import { useTheme } from "next-themes"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { LogOut, Moon, Sun, User, Smartphone, Ruler, Scale, Target, Flame } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { LogOut, Moon, Sun, User, Smartphone, Ruler, Scale, Target, Flame, Calendar, VenusAndMars } from "lucide-react"
 import { useEffect, useState } from "react"
 
 export function SettingsPage() {
@@ -21,6 +28,9 @@ export function SettingsPage() {
   const [weightKg, setWeightKg] = useState("")
   const [dailyCalories, setDailyCalories] = useState("")
   const [weightGoal, setWeightGoal] = useState("")
+  /** "" = unset; maps to profile.gender null */
+  const [genderUi, setGenderUi] = useState<"" | ProfileGender>("")
+  const [birthdayUi, setBirthdayUi] = useState("")
 
   useEffect(() => {
     setMounted(true)
@@ -33,6 +43,8 @@ export function SettingsPage() {
       profile.dailyCaloriesTarget != null ? String(profile.dailyCaloriesTarget) : ""
     )
     setWeightGoal(profile.weightGoalKg != null ? String(profile.weightGoalKg) : "")
+    setGenderUi(profile.gender ?? "")
+    setBirthdayUi(profile.birthday ?? "")
   }, [profile])
 
   const isDark = mounted && theme === "dark"
@@ -43,11 +55,16 @@ export function SettingsPage() {
     const dc = parseInt(dailyCalories.replace(/\s/g, ""), 10)
     const wg = parseFloat(weightGoal.replace(",", "."))
 
+    const birthday = birthdayUi.trim() === "" ? null : parseProfileBirthday(birthdayUi)
+    const gender = genderUi === "" ? null : genderUi
+
     updateProfile({
       heightM: Number.isFinite(hm) && hm > 0 ? hm : null,
       weightKg: Number.isFinite(wk) && wk > 0 ? wk : null,
       dailyCaloriesTarget: Number.isFinite(dc) && dc > 0 ? dc : null,
       weightGoalKg: Number.isFinite(wg) && wg > 0 ? wg : null,
+      birthday,
+      gender,
     })
     if (Number.isFinite(wk) && wk > 0) {
       recordWeightKg(wk)
@@ -93,7 +110,8 @@ export function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-xs text-muted-foreground leading-relaxed">
-            تُستخدم هذه القيم في لوحة التحكم (مؤشر كتلة الجسم، تنبيه السعرات). تُحفظ على جهازك فقط حالياً.
+            تُستخدم الطول والوزن والأهداف في لوحة التحكم (مؤشر كتلة الجسم، تنبيه السعرات). تاريخ الميلاد والجنس
+            للملف فقط ولا يظهران في لوحة التحكم. تُحفظ البيانات على جهازك فقط حالياً.
           </p>
           <div className="grid gap-3">
             <Field>
@@ -143,6 +161,40 @@ export function SettingsPage() {
                 value={weightGoal}
                 onChange={(e) => setWeightGoal(e.target.value)}
               />
+            </Field>
+            <Field>
+              <FieldLabel className="text-foreground flex items-center gap-2">
+                <Calendar className="w-3.5 h-3.5" />
+                تاريخ الميلاد (اختياري)
+              </FieldLabel>
+              <Input
+                type="date"
+                value={birthdayUi}
+                onChange={(e) => setBirthdayUi(e.target.value)}
+                className="text-left"
+                dir="ltr"
+              />
+            </Field>
+            <Field>
+              <FieldLabel className="text-foreground flex items-center gap-2">
+                <VenusAndMars className="w-3.5 h-3.5" />
+                الجنس (اختياري)
+              </FieldLabel>
+              <Select
+                value={genderUi === "" ? "__none__" : genderUi}
+                onValueChange={(v) =>
+                  setGenderUi(v === "__none__" ? "" : (v as ProfileGender))
+                }
+              >
+                <SelectTrigger className="w-full max-w-full justify-between" size="default">
+                  <SelectValue placeholder="لم يُحدد" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">لم يُحدد</SelectItem>
+                  <SelectItem value="male">ذكر</SelectItem>
+                  <SelectItem value="female">أنثى</SelectItem>
+                </SelectContent>
+              </Select>
             </Field>
           </div>
           <Button className="w-full" onClick={handleSaveBodyStats}>
