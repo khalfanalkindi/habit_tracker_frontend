@@ -10,7 +10,7 @@ Use this repo as its **own** Railway service. The API lives in your **backend** 
 | `NEXT_PUBLIC_APP_TOKEN` | **Same string** as backend `APP_TOKEN`. Sent as `Authorization: Bearer …` on every API call. |
 | `NEXT_PUBLIC_API_KEY` | Optional **legacy** alias for the same value if you already created this variable; prefer `NEXT_PUBLIC_APP_TOKEN` for new projects. |
 
-**Runtime config:** Even when the Next bundle was built without `NEXT_PUBLIC_*`, the container runs `write-runtime-env.cjs` before `server.js` and writes `public/runtime-env.json` from Railway’s environment. The browser loads that file on startup so your existing `NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_API_KEY` variables work after a normal deploy.
+**Runtime config:** The app calls **`GET /api/runtime-config`**, which reads Railway’s `NEXT_PUBLIC_*` from the Node process at **request time** (so values are not lost to Next’s build-time inlining). A startup script may also write `public/runtime-env.json` as a fallback; `public` is `chown`’d so the `nextjs` user can update it.
 
 ## Service setup
 

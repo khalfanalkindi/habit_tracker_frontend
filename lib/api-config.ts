@@ -1,9 +1,10 @@
 /**
  * API base URL + app token for browser calls.
  *
- * 1) Next may inline NEXT_PUBLIC_* at build time (often empty in Docker on Railway).
- * 2) If still unconfigured, we load /runtime-env.json written at container start from real env.
+ * Prefer NEXT_PUBLIC_* and /api/runtime-config; fall back to `static-api-defaults.ts`.
  */
+
+import { STATIC_API_BASE_URL, STATIC_APP_TOKEN } from "@/lib/static-api-defaults"
 
 export type ClientApiConfig = {
   baseUrl: string
@@ -13,8 +14,9 @@ export type ClientApiConfig = {
 
 let cache: ClientApiConfig | null = null
 
-function fromBuildTime(): ClientApiConfig {
-  const base = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "")
+/** Only inlined / process env — no static fallback (used to decide whether to fetch runtime). */
+function fromEnvOnly(): ClientApiConfig {
+  const base = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "").trim()
   const appToken = (
     process.env.NEXT_PUBLIC_APP_TOKEN ??
     process.env.NEXT_PUBLIC_API_KEY ??
@@ -23,38 +25,50 @@ function fromBuildTime(): ClientApiConfig {
   return { baseUrl: base, appToken, configured: Boolean(base && appToken) }
 }
 
+function mergeWithStatic(baseRaw: string, tokenRaw: string): ClientApiConfig {
+  const base = (baseRaw.trim() || STATIC_API_BASE_URL).replace(/\/$/, "")
+  const appToken = (tokenRaw.trim() || STATIC_APP_TOKEN).trim()
+  return { baseUrl: base, appToken, configured: Boolean(base && appToken) }
+}
+
 export function getApiConfig(): ClientApiConfig {
   if (cache) return cache
-  return fromBuildTime()
+  const e = fromEnvOnly()
+  return mergeWithStatic(e.baseUrl, e.appToken)
 }
 
 /**
- * Call once on the client after mount. Fetches /runtime-env.json when the build-time
- * bundle did not receive NEXT_PUBLIC_* (typical Railway Docker + Next).
+ * Call on the client after mount. Tries /api/runtime-config and /runtime-env.json, then static defaults.
  */
 export async function hydrateApiConfig(): Promise<void> {
   if (cache?.configured) return
 
-  const built = fromBuildTime()
-  if (built.configured) {
-    cache = built
+  const envOnly = fromEnvOnly()
+  if (envOnly.configured) {
+    cache = envOnly
     return
   }
   try {
+    const api = await fetch(`/api/runtime-config?${Date.now()}`, { cache: "no-store" })
+    if (api.ok) {
+      const j = (await api.json()) as { baseUrl?: unknown; appToken?: unknown }
+      const merged = mergeWithStatic(String(j.baseUrl ?? ""), String(j.appToken ?? ""))
+      if (merged.configured) {
+        cache = merged
+        return
+      }
+    }
     const res = await fetch(`/runtime-env.json?${Date.now()}`, { cache: "no-store" })
     if (res.ok) {
       const j = (await res.json()) as { baseUrl?: unknown; appToken?: unknown }
-      const base = String(j.baseUrl ?? "")
-        .trim()
-        .replace(/\/$/, "")
-      const appToken = String(j.appToken ?? "").trim()
-      if (base && appToken) {
-        cache = { baseUrl: base, appToken, configured: true }
+      const merged = mergeWithStatic(String(j.baseUrl ?? ""), String(j.appToken ?? ""))
+      if (merged.configured) {
+        cache = merged
         return
       }
     }
   } catch {
-    /* offline / missing file */
+    /* offline */
   }
-  cache = built
+  cache = mergeWithStatic("", "")
 }

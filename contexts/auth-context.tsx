@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return {
           ok: false,
           message:
-            "لم يُحمّل عنوان الخادم أو الرمز. تحقق من متغيرات Railway ثم أعد نشر الواجهة (يُنشأ ملف runtime-env.json عند التشغيل).",
+            "لم يُحمّل عنوان الخادم أو الرمز. في Railway تأكد من NEXT_PUBLIC_API_URL و NEXT_PUBLIC_API_KEY (نفس APP_TOKEN في الخادم) ثم أعد نشر الواجهة.",
         }
       }
       try {
