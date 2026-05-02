@@ -7,6 +7,7 @@ Use this repo as its **own** Railway service. The API lives in your **backend** 
 | Name | Purpose |
 |------|--------|
 | `NEXT_PUBLIC_API_URL` | Public backend base URL, e.g. `https://your-api.up.railway.app` — **no trailing slash**. Must be set **before** build; change → redeploy so Next bakes in the new value. |
+| `NEXT_PUBLIC_APP_TOKEN` | **Same string** as backend `APP_TOKEN`. Sent as `Authorization: Bearer …` on every API call. |
 
 ## Service setup
 

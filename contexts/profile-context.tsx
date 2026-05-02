@@ -120,7 +120,7 @@ type ProfileContextType = {
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined)
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
-  const { accessToken, apiMode } = useAuth()
+  const { apiMode, user } = useAuth()
   const [profile, setProfileState] = useState<UserProfile>(defaultProfile)
   const [ready, setReady] = useState(false)
 
@@ -130,9 +130,9 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (!ready || !apiMode || !accessToken) return
+    if (!ready || !apiMode || !user || user.id === "demo") return
     let cancelled = false
-    apiGetProfile(accessToken)
+    apiGetProfile()
       .then((server) => {
         if (!cancelled) {
           setProfileState((prev) => mergeFromServer(prev, server))
@@ -144,7 +144,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [ready, apiMode, accessToken])
+  }, [ready, apiMode, user?.id])
 
   useEffect(() => {
     if (!ready) return

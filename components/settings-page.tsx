@@ -20,7 +20,7 @@ import { LogOut, Moon, Sun, User, Smartphone, Ruler, Scale, Target, Flame, Calen
 import { useEffect, useState } from "react"
 
 export function SettingsPage() {
-  const { user, logout, accessToken, apiMode } = useAuth()
+  const { user, logout, apiMode } = useAuth()
   const { profile, updateProfile, recordWeightKg } = useProfile()
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
@@ -77,9 +77,9 @@ export function SettingsPage() {
     if (Number.isFinite(wk) && wk > 0) {
       recordWeightKg(wk)
     }
-    if (apiMode && accessToken) {
+    if (apiMode) {
       try {
-        await apiPutProfile(accessToken, {
+        await apiPutProfile({
           heightM: heightVal,
           weightKg: weightVal,
           dailyCaloriesTarget: dcVal,

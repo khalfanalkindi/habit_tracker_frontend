@@ -1,8 +1,8 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react"
-import { apiLogin, getApiConfig, setStoredAccessToken, getStoredAccessToken } from "@/lib/api"
+import { createContext, useContext, useState, useEffect, useCallback } from "react"
+import { apiLogin, getApiConfig } from "@/lib/api"
 
 const USER_KEY = "habit-tracker-user"
 
@@ -13,13 +13,14 @@ export type AuthUser = {
   username: string
 }
 
+export type LoginResult = { ok: true } | { ok: false; message: string }
+
 type AuthContextType = {
   user: AuthUser | null
-  accessToken: string | null
-  /** True when NEXT_PUBLIC_API_URL + NEXT_PUBLIC_API_KEY are set */
+  /** True when NEXT_PUBLIC_API_URL + NEXT_PUBLIC_APP_TOKEN are set (read on client after mount). */
   apiMode: boolean
   isLoading: boolean
-  login: (identifier: string, password: string) => Promise<boolean>
+  login: (identifier: string, password: string) => Promise<LoginResult>
   logout: () => void
 }
 
@@ -47,75 +48,68 @@ function loadUserFromStorage(): AuthUser | null {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
-  const [accessToken, setAccessToken] = useState<string | null>(null)
+  const [apiMode, setApiMode] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
-  const apiMode = useMemo(() => getApiConfig().configured, [])
-
   useEffect(() => {
-    const t = getStoredAccessToken()
+    const configured = getApiConfig().configured
+    setApiMode(configured)
     const u = loadUserFromStorage()
-    if (apiMode) {
-      if (t && u && u.id !== "demo") {
-        setAccessToken(t)
+    if (configured) {
+      if (u && u.id !== "demo") {
         setUser(u)
-      } else {
-        setStoredAccessToken(null)
-        if (u) localStorage.removeItem(USER_KEY)
+      } else if (u) {
+        localStorage.removeItem(USER_KEY)
       }
     } else if (u) {
       setUser(u)
     }
     setIsLoading(false)
-  }, [apiMode])
+  }, [])
 
   const login = useCallback(
-    async (identifier: string, password: string): Promise<boolean> => {
-      if (!identifier.trim() || !password) return false
+    async (identifier: string, password: string): Promise<LoginResult> => {
+      const ident = identifier.trim()
+      if (!ident || !password) {
+        return { ok: false, message: "أدخل اسم المستخدم أو البريد وكلمة المرور" }
+      }
       if (apiMode) {
         try {
-          const data = await apiLogin(identifier.trim(), password)
+          const data = await apiLogin(ident, password)
           const nextUser: AuthUser = {
             id: data.user.id,
             email: data.user.email,
             name: data.user.display_name,
             username: data.user.username,
           }
-          setAccessToken(data.access_token)
-          setStoredAccessToken(data.access_token)
           setUser(nextUser)
           localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
-          return true
-        } catch {
-          return false
+          return { ok: true }
+        } catch (e) {
+          const message = e instanceof Error ? e.message : "تعذر الاتصال بالخادم"
+          return { ok: false, message }
         }
       }
       const nextUser: AuthUser = {
         id: "demo",
-        email: identifier.trim(),
-        name: identifier.trim().split("@")[0] || "مستخدم",
-        username: identifier.trim().split("@")[0] || "user",
+        email: ident,
+        name: ident.split("@")[0] || "مستخدم",
+        username: ident.split("@")[0] || "user",
       }
       setUser(nextUser)
-      setAccessToken(null)
-      setStoredAccessToken(null)
       localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
-      return true
+      return { ok: true }
     },
     [apiMode]
   )
 
   const logout = useCallback(() => {
     setUser(null)
-    setAccessToken(null)
-    setStoredAccessToken(null)
     localStorage.removeItem(USER_KEY)
   }, [])
 
   return (
-    <AuthContext.Provider
-      value={{ user, accessToken, apiMode, isLoading, login, logout }}
-    >
+    <AuthContext.Provider value={{ user, apiMode, isLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

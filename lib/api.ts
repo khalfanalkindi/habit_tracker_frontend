@@ -1,30 +1,20 @@
 /**
- * Backend API client. Set NEXT_PUBLIC_API_URL and NEXT_PUBLIC_API_KEY in .env.local
- * (same value as server API_STATIC_KEY when enabled).
+ * Backend API client.
+ * Set NEXT_PUBLIC_API_URL and NEXT_PUBLIC_APP_TOKEN (same value as server APP_TOKEN on Railway).
  */
-
-const TOKEN_KEY = "habit-tracker-access-token"
 
 export function getApiConfig() {
   const base = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "")
-  const key = process.env.NEXT_PUBLIC_API_KEY ?? ""
-  return { baseUrl: base, apiKey: key, configured: Boolean(base && key) }
+  const appToken = (process.env.NEXT_PUBLIC_APP_TOKEN ?? "").trim()
+  return { baseUrl: base, appToken, configured: Boolean(base && appToken) }
 }
 
-export function getStoredAccessToken(): string | null {
-  if (typeof window === "undefined") return null
-  return localStorage.getItem(TOKEN_KEY)
-}
-
-export function setStoredAccessToken(token: string | null) {
-  if (typeof window === "undefined") return
-  if (token) localStorage.setItem(TOKEN_KEY, token)
-  else localStorage.removeItem(TOKEN_KEY)
+function authHeaders(): HeadersInit {
+  const { appToken } = getApiConfig()
+  return { Authorization: `Bearer ${appToken}` }
 }
 
 export type LoginResponse = {
-  access_token: string
-  token_type: string
   user: { id: string; email: string; display_name: string; username: string }
 }
 
@@ -38,14 +28,11 @@ export type ProfileRead = {
 }
 
 export async function apiLogin(identifier: string, password: string): Promise<LoginResponse> {
-  const { baseUrl, apiKey, configured } = getApiConfig()
+  const { baseUrl, configured } = getApiConfig()
   if (!configured) throw new Error("API not configured")
   const res = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": apiKey,
-    },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ identifier: identifier.trim(), password }),
   })
   if (!res.ok) {
@@ -61,26 +48,20 @@ export async function apiLogin(identifier: string, password: string): Promise<Lo
   return res.json() as Promise<LoginResponse>
 }
 
-export async function apiGetProfile(token: string): Promise<ProfileRead> {
-  const { baseUrl, apiKey, configured } = getApiConfig()
+export async function apiGetProfile(): Promise<ProfileRead> {
+  const { baseUrl, configured } = getApiConfig()
   if (!configured) throw new Error("API not configured")
-  const res = await fetch(`${baseUrl}/api/me/profile`, {
-    headers: { "X-API-Key": apiKey, Authorization: `Bearer ${token}` },
-  })
+  const res = await fetch(`${baseUrl}/api/me/profile`, { headers: authHeaders() })
   if (!res.ok) throw new Error(await res.text())
   return res.json() as Promise<ProfileRead>
 }
 
-export async function apiPutProfile(token: string, body: ProfileRead): Promise<ProfileRead> {
-  const { baseUrl, apiKey, configured } = getApiConfig()
+export async function apiPutProfile(body: ProfileRead): Promise<ProfileRead> {
+  const { baseUrl, configured } = getApiConfig()
   if (!configured) throw new Error("API not configured")
   const res = await fetch(`${baseUrl}/api/me/profile`, {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": apiKey,
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(await res.text())

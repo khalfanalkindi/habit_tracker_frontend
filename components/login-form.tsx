@@ -19,16 +19,10 @@ export function LoginForm() {
     e.preventDefault()
     setError("")
     setIsLoading(true)
-
-    try {
-      const success = await login(email, password)
-      if (!success) {
-        setError("بيانات الدخول غير صحيحة")
-      }
-    } catch {
-      setError("حدث خطأ ما")
-    } finally {
-      setIsLoading(false)
+    const result = await login(email, password)
+    setIsLoading(false)
+    if (!result.ok) {
+      setError(result.message)
     }
   }
 
@@ -58,7 +52,7 @@ export function LoginForm() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  autoComplete="email"
+                  autoComplete="username"
                   className="text-right"
                   dir="ltr"
                 />
@@ -73,12 +67,16 @@ export function LoginForm() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   autoComplete="current-password"
+                  dir="ltr"
+                  className="text-right"
                 />
               </Field>
             </FieldGroup>
 
             {error && (
-              <p className="text-sm text-destructive text-center">{error}</p>
+              <p className="text-sm text-destructive text-center" dir="auto">
+                {error}
+              </p>
             )}
 
             <Button type="submit" className="w-full" disabled={isLoading}>
@@ -92,11 +90,39 @@ export function LoginForm() {
               )}
             </Button>
 
-            <p className="text-xs text-muted-foreground text-center">
-              {apiMode
-                ? "سجّل الدخول بالحساب الذي أنشأته من واجهة Swagger على الخادم."
-                : "تجريبي: استخدم أي بريد وكلمة مرور للدخول"}
-            </p>
+            {apiMode ? (
+              <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                الاتصال بالخادم مفعّل. استخدم نفس الحساب الذي أنشأته في لوحة الـ API. تأكد أن
+                {" "}
+                <code className="text-[0.7rem] bg-muted px-1 rounded" dir="ltr">
+                  NEXT_PUBLIC_APP_TOKEN
+                </code>
+                {" "}
+                مطابق لـ
+                {" "}
+                <code className="text-[0.7rem] bg-muted px-1 rounded" dir="ltr">
+                  APP_TOKEN
+                </code>
+                {" "}
+                على الخادم.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                وضع تجريبي محلي. لتفعيل الخادم أضف في{" "}
+                <code className="text-[0.7rem] bg-muted px-1 rounded" dir="ltr">
+                  .env.local
+                </code>
+                :{" "}
+                <code className="text-[0.7rem] bg-muted px-1 rounded" dir="ltr">
+                  NEXT_PUBLIC_API_URL
+                </code>
+                {" و"}
+                <code className="text-[0.7rem] bg-muted px-1 rounded" dir="ltr">
+                  NEXT_PUBLIC_APP_TOKEN
+                </code>
+                {" ثم أعد تشغيل التطوير."}
+              </p>
+            )}
           </form>
         </CardContent>
       </Card>
