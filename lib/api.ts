@@ -3,13 +3,29 @@
  * URL + token: NEXT_PUBLIC_* at build time, or /runtime-env.json at runtime (see Dockerfile).
  */
 
+import { AUTH_USER_STORAGE_KEY } from "@/lib/auth-constants"
 import { getApiConfig } from "@/lib/api-config"
 
 export { getApiConfig, hydrateApiConfig } from "@/lib/api-config"
 
+function userIdHeader(): Record<string, string> {
+  if (typeof window === "undefined") return {}
+  try {
+    const raw = localStorage.getItem(AUTH_USER_STORAGE_KEY)
+    if (!raw) return {}
+    const u = JSON.parse(raw) as { id?: string }
+    if (typeof u.id === "string" && u.id && u.id !== "demo") {
+      return { "X-User-Id": u.id }
+    }
+  } catch {
+    /* ignore */
+  }
+  return {}
+}
+
 function authHeaders(): HeadersInit {
   const { appToken } = getApiConfig()
-  return { Authorization: `Bearer ${appToken}` }
+  return { Authorization: `Bearer ${appToken}`, ...userIdHeader() }
 }
 
 export type LoginResponse = {

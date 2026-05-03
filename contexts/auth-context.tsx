@@ -2,9 +2,10 @@
 
 import type React from "react"
 import { createContext, useContext, useState, useEffect, useCallback } from "react"
+import { AUTH_USER_STORAGE_KEY } from "@/lib/auth-constants"
 import { apiLogin, getApiConfig, hydrateApiConfig } from "@/lib/api"
 
-const USER_KEY = "habit-tracker-user"
+const USER_KEY = AUTH_USER_STORAGE_KEY
 
 export type AuthUser = {
   id: string
