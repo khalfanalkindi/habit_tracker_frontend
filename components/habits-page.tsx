@@ -1,7 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import { useHabits, DAYS_AR, DAYS_AR_SHORT, MEAL_TYPES, EXERCISE_TYPES } from "@/contexts/habits-context"
+import {
+  useHabits,
+  DAYS_AR,
+  DAYS_AR_SHORT,
+  MEAL_TYPES,
+  EXERCISE_TYPES,
+  type FoodOption,
+} from "@/contexts/habits-context"
 import { useProfile } from "@/contexts/profile-context"
 import { HabitsWeightCard } from "@/components/habits-weight-card"
 import { CalorieBudgetAlert } from "@/components/calorie-budget-alert"
@@ -23,9 +30,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus, Trash2, UtensilsCrossed, Dumbbell, Apple, Scale } from "lucide-react"
+import { Plus, Pencil, Trash2, UtensilsCrossed, Dumbbell, Apple, Scale } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+
+const DEFAULT_FOOD_OPTION_FORM = {
+  name: "",
+  calories: "",
+  protein: "",
+  carbs: "",
+  fat: "",
+  servingSize: "",
+  servingUnit: "غرام",
+}
 
 function formatLocalYMD(d: Date): string {
   const y = d.getFullYear()
@@ -79,6 +96,7 @@ export function HabitsPage() {
   const {
     foodOptions,
     addFoodOption,
+    updateFoodOption,
     removeFoodOption,
     foodLogs,
     addFoodLogEntry,
@@ -99,17 +117,11 @@ export function HabitsPage() {
   /** Which weekday column (0–6) is expanded under «الطعام حسب أيام الأسبوع»; only one at a time. */
   const [expandedWeekFoodDayIndex, setExpandedWeekFoodDayIndex] = useState<number | null>(null)
 
-  // Food option dialog state
-  const [isOptionDialogOpen, setIsOptionDialogOpen] = useState(false)
-  const [newOption, setNewOption] = useState({
-    name: "",
-    calories: "",
-    protein: "",
-    carbs: "",
-    fat: "",
-    servingSize: "",
-    servingUnit: "غرام",
-  })
+  // Food option dialog: add or edit same form
+  const [optionDialogOpen, setOptionDialogOpen] = useState(false)
+  const [optionDialogMode, setOptionDialogMode] = useState<"add" | "edit">("add")
+  const [editingOptionId, setEditingOptionId] = useState<string | null>(null)
+  const [optionForm, setOptionForm] = useState({ ...DEFAULT_FOOD_OPTION_FORM })
   
   // Food log dialog state
   const [isLogDialogOpen, setIsLogDialogOpen] = useState(false)
@@ -131,32 +143,54 @@ export function HabitsPage() {
   const todayFoodLog = getFoodLogForDate(todayDateStr)
   const exercises = getExercisesForDay(selectedDay)
 
-  const handleAddFoodOption = async () => {
-    if (!newOption.name.trim() || !newOption.calories) return
+  const handleSubmitFoodOption = async () => {
+    if (!optionForm.name.trim() || !optionForm.calories) return
+    const payload = {
+      name: optionForm.name.trim(),
+      calories: Number(optionForm.calories) || 0,
+      protein: Number(optionForm.protein) || 0,
+      carbs: Number(optionForm.carbs) || 0,
+      fat: Number(optionForm.fat) || 0,
+      servingSize: Number(optionForm.servingSize) || 100,
+      servingUnit: optionForm.servingUnit,
+    }
     try {
-      await addFoodOption({
-        name: newOption.name.trim(),
-        calories: Number(newOption.calories) || 0,
-        protein: Number(newOption.protein) || 0,
-        carbs: Number(newOption.carbs) || 0,
-        fat: Number(newOption.fat) || 0,
-        servingSize: Number(newOption.servingSize) || 100,
-        servingUnit: newOption.servingUnit,
-      })
-      setNewOption({
-        name: "",
-        calories: "",
-        protein: "",
-        carbs: "",
-        fat: "",
-        servingSize: "",
-        servingUnit: "غرام",
-      })
-      setIsOptionDialogOpen(false)
-      toast.success("تمت إضافة خيار الطعام")
+      if (optionDialogMode === "edit" && editingOptionId) {
+        await updateFoodOption(editingOptionId, payload)
+        toast.success("تم تحديث خيار الطعام")
+      } else {
+        await addFoodOption(payload)
+        toast.success("تمت إضافة خيار الطعام")
+      }
+      setOptionForm({ ...DEFAULT_FOOD_OPTION_FORM })
+      setOptionDialogMode("add")
+      setEditingOptionId(null)
+      setOptionDialogOpen(false)
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "تعذر حفظ خيار الطعام")
     }
+  }
+
+  const openAddFoodOptionDialog = () => {
+    setOptionDialogMode("add")
+    setEditingOptionId(null)
+    setOptionForm({ ...DEFAULT_FOOD_OPTION_FORM })
+    setOptionDialogOpen(true)
+  }
+
+  const openEditFoodOptionDialog = (option: FoodOption) => {
+    setOptionDialogMode("edit")
+    setEditingOptionId(option.id)
+    setOptionForm({
+      name: option.name,
+      calories: String(option.calories),
+      protein: String(option.protein),
+      carbs: String(option.carbs),
+      fat: String(option.fat),
+      servingSize: String(option.servingSize),
+      servingUnit: option.servingUnit,
+    })
+    setOptionDialogOpen(true)
   }
 
   const handleAddFoodLog = async () => {
@@ -456,28 +490,46 @@ export function HabitsPage() {
           {/* Food Options Tab */}
           {foodSubTab === "options" && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <p className="text-sm text-muted-foreground">
                   سجل خيارات الطعام المتاحة لديك
                 </p>
-                <Dialog open={isOptionDialogOpen} onOpenChange={setIsOptionDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" className="gap-1">
-                      <Plus className="w-4 h-4" />
-                      إضافة
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-h-[90vh] overflow-y-auto">
+                <Button
+                  size="sm"
+                  className="gap-1 shrink-0"
+                  type="button"
+                  onClick={openAddFoodOptionDialog}
+                >
+                  <Plus className="w-4 h-4" />
+                  إضافة
+                </Button>
+              </div>
+              <Dialog
+                open={optionDialogOpen}
+                onOpenChange={(open) => {
+                  setOptionDialogOpen(open)
+                  if (!open) {
+                    setOptionDialogMode("add")
+                    setEditingOptionId(null)
+                    setOptionForm({ ...DEFAULT_FOOD_OPTION_FORM })
+                  }
+                }}
+              >
+                <DialogContent className="max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                      <DialogTitle>إضافة خيار طعام جديد</DialogTitle>
+                      <DialogTitle>
+                        {optionDialogMode === "edit"
+                          ? "تعديل خيار الطعام"
+                          : "إضافة خيار طعام جديد"}
+                      </DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 pt-4">
                       <div className="space-y-2">
                         <label className="text-sm font-medium">اسم الطعام</label>
                         <Input
                           placeholder="مثال: أرز مع دجاج"
-                          value={newOption.name}
-                          onChange={(e) => setNewOption({ ...newOption, name: e.target.value })}
+                          value={optionForm.name}
+                          onChange={(e) => setOptionForm({ ...optionForm, name: e.target.value })}
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
@@ -486,15 +538,19 @@ export function HabitsPage() {
                           <Input
                             type="number"
                             placeholder="100"
-                            value={newOption.servingSize}
-                            onChange={(e) => setNewOption({ ...newOption, servingSize: e.target.value })}
+                            value={optionForm.servingSize}
+                            onChange={(e) =>
+                              setOptionForm({ ...optionForm, servingSize: e.target.value })
+                            }
                           />
                         </div>
                         <div className="space-y-2">
                           <label className="text-sm font-medium">الوحدة</label>
                           <Select
-                            value={newOption.servingUnit}
-                            onValueChange={(value) => setNewOption({ ...newOption, servingUnit: value })}
+                            value={optionForm.servingUnit}
+                            onValueChange={(value) =>
+                              setOptionForm({ ...optionForm, servingUnit: value })
+                            }
                           >
                             <SelectTrigger>
                               <SelectValue />
@@ -514,8 +570,10 @@ export function HabitsPage() {
                         <Input
                           type="number"
                           placeholder="350"
-                          value={newOption.calories}
-                          onChange={(e) => setNewOption({ ...newOption, calories: e.target.value })}
+                          value={optionForm.calories}
+                          onChange={(e) =>
+                            setOptionForm({ ...optionForm, calories: e.target.value })
+                          }
                         />
                       </div>
                       <div className="grid grid-cols-3 gap-3">
@@ -524,8 +582,10 @@ export function HabitsPage() {
                           <Input
                             type="number"
                             placeholder="20"
-                            value={newOption.protein}
-                            onChange={(e) => setNewOption({ ...newOption, protein: e.target.value })}
+                            value={optionForm.protein}
+                            onChange={(e) =>
+                              setOptionForm({ ...optionForm, protein: e.target.value })
+                            }
                           />
                         </div>
                         <div className="space-y-2">
@@ -533,8 +593,8 @@ export function HabitsPage() {
                           <Input
                             type="number"
                             placeholder="40"
-                            value={newOption.carbs}
-                            onChange={(e) => setNewOption({ ...newOption, carbs: e.target.value })}
+                            value={optionForm.carbs}
+                            onChange={(e) => setOptionForm({ ...optionForm, carbs: e.target.value })}
                           />
                         </div>
                         <div className="space-y-2">
@@ -542,22 +602,21 @@ export function HabitsPage() {
                           <Input
                             type="number"
                             placeholder="10"
-                            value={newOption.fat}
-                            onChange={(e) => setNewOption({ ...newOption, fat: e.target.value })}
+                            value={optionForm.fat}
+                            onChange={(e) => setOptionForm({ ...optionForm, fat: e.target.value })}
                           />
                         </div>
                       </div>
                       <Button
-                        onClick={() => void handleAddFoodOption()}
+                        onClick={() => void handleSubmitFoodOption()}
                         className="w-full"
-                        disabled={!newOption.name.trim() || !newOption.calories}
+                        disabled={!optionForm.name.trim() || !optionForm.calories}
                       >
-                        إضافة
+                        {optionDialogMode === "edit" ? "حفظ التعديلات" : "إضافة"}
                       </Button>
                     </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
+                </DialogContent>
+              </Dialog>
 
               {/* Food Options List */}
               {foodOptions.length === 0 ? (
@@ -598,24 +657,38 @@ export function HabitsPage() {
                               </span>
                             </div>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() =>
-                              void (async () => {
-                                try {
-                                  await removeFoodOption(option.id)
-                                } catch (e: unknown) {
-                                  toast.error(
-                                    e instanceof Error ? e.message : "تعذر حذف خيار الطعام"
-                                  )
-                                }
-                              })()
-                            }
-                            className="text-muted-foreground hover:text-destructive"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <div className="flex shrink-0 gap-0.5">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openEditFoodOptionDialog(option)}
+                              className="text-muted-foreground hover:text-foreground"
+                              aria-label="تعديل خيار الطعام"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                void (async () => {
+                                  try {
+                                    await removeFoodOption(option.id)
+                                  } catch (e: unknown) {
+                                    toast.error(
+                                      e instanceof Error ? e.message : "تعذر حذف خيار الطعام"
+                                    )
+                                  }
+                                })()
+                              }
+                              className="text-muted-foreground hover:text-destructive"
+                              aria-label="حذف خيار الطعام"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
