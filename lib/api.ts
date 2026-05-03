@@ -57,6 +57,31 @@ function authHeaders(): HeadersInit {
 
 export type LoginResponse = {
   user: { id: string; email: string; display_name: string; username: string }
+  /** ISO datetime — client treats session as expired after this instant. */
+  sessionExpiresAt?: string
+}
+
+function parseLoginResponse(raw: unknown): LoginResponse {
+  if (!raw || typeof raw !== "object") throw new Error("Invalid login response")
+  const o = raw as Record<string, unknown>
+  const u = o.user
+  if (!u || typeof u !== "object") throw new Error("Invalid login response")
+  const ur = u as Record<string, unknown>
+  const id = typeof ur.id === "string" ? ur.id : ""
+  const email = typeof ur.email === "string" ? ur.email : ""
+  const display_name =
+    typeof ur.displayName === "string"
+      ? ur.displayName
+      : typeof ur.display_name === "string"
+        ? ur.display_name
+        : ""
+  const username = typeof ur.username === "string" ? ur.username : ""
+  const sessionRaw = o.sessionExpiresAt ?? o.session_expires_at
+  const sessionExpiresAt = typeof sessionRaw === "string" ? sessionRaw : undefined
+  return {
+    user: { id, email, display_name, username },
+    sessionExpiresAt,
+  }
 }
 
 export type ProfileRead = {
@@ -123,7 +148,68 @@ export async function apiLogin(identifier: string, password: string): Promise<Lo
     const msg = formatFastApiErrorBody(err)
     throw new Error(msg === "Request failed" ? res.statusText || msg : msg)
   }
-  return res.json() as Promise<LoginResponse>
+  const data: unknown = await res.json()
+  return parseLoginResponse(data)
+}
+
+const DEFAULT_SESSION_MS = 14 * 24 * 60 * 60 * 1000
+
+export function defaultSessionExpiresAtIso(): string {
+  return new Date(Date.now() + DEFAULT_SESSION_MS).toISOString()
+}
+
+export async function apiChangePassword(input: {
+  identifier: string
+  oldPassword: string
+  newPassword: string
+}): Promise<void> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const res = await fetch(`${baseUrl}/api/auth/change-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      identifier: input.identifier.trim(),
+      oldPassword: input.oldPassword,
+      newPassword: input.newPassword,
+    }),
+  })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+}
+
+export type ForgotPasswordResponse = {
+  message: string
+  resetLink?: string | null
+}
+
+export async function apiForgotPassword(identifier: string): Promise<ForgotPasswordResponse> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const res = await fetch(`${baseUrl}/api/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ identifier: identifier.trim() }),
+  })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  if (!data || typeof data !== "object") throw new Error("Invalid response")
+  const o = data as Record<string, unknown>
+  const message = typeof o.message === "string" ? o.message : ""
+  const resetLink = typeof o.resetLink === "string" ? o.resetLink : undefined
+  return { message, resetLink }
+}
+
+export async function apiResetPassword(token: string, newPassword: string): Promise<void> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const res = await fetch(`${baseUrl}/api/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ token: token.trim(), newPassword }),
+  })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
 }
 
 export async function apiGetProfile(): Promise<ProfileRead> {
@@ -547,4 +633,35 @@ export async function apiPostWeightEntry(input: {
   const data: unknown = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
   return normalizeWeightEntry(data)
+}
+
+export async function apiPatchWeightEntry(
+  id: string,
+  patch: { date?: string; weightKg?: number },
+): Promise<WeightEntryRead> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const body: Record<string, unknown> = {}
+  if (patch.date !== undefined) body.date = patch.date
+  if (patch.weightKg !== undefined) body.weightKg = patch.weightKg
+  const res = await fetch(`${baseUrl}/api/me/weight-entries/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  return normalizeWeightEntry(data)
+}
+
+export async function apiDeleteWeightEntry(id: string): Promise<void> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const res = await fetch(`${baseUrl}/api/me/weight-entries/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  })
+  if (res.status === 204) return
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
 }

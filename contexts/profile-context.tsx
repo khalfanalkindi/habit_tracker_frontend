@@ -4,8 +4,10 @@ import type React from "react"
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 
 import {
+  apiDeleteWeightEntry,
   apiGetProfile,
   apiListWeightEntries,
+  apiPatchWeightEntry,
   apiPostWeightEntry,
   type ProfileRead,
   type WeightEntryRead,
@@ -121,6 +123,32 @@ function applyProfileAndOptionalWeightHistory(
   return next
 }
 
+function weightHistoryFingerprint(h: { date: string; weightKg: number }[]): string {
+  return [...h]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((e) => `${e.date}:${Math.round(e.weightKg * 100) / 100}`)
+    .join("|")
+}
+
+function computeWeightMergeNotice(
+  localHist: WeightHistoryEntry[],
+  apiHist: WeightEntryRead[],
+): string | null {
+  if (apiHist.length === 0 || localHist.length === 0) return null
+  const apiAs = apiHist.map((w) => ({ date: w.date, weightKg: w.weightKg }))
+  if (weightHistoryFingerprint(localHist) === weightHistoryFingerprint(apiAs)) return null
+  return "سجل الوزن المحلي يختلف عن الخادم — تم اعتماد بيانات الخادم."
+}
+
+function tailWeightKgFromHistory(h: WeightHistoryEntry[]): number | null {
+  if (h.length === 0) return null
+  const sorted = [...h].sort((a, b) => a.date.localeCompare(b.date))
+  const last = sorted[sorted.length - 1]
+  return last != null && Number.isFinite(last.weightKg) ? last.weightKg : null
+}
+
+export type ServerSyncStatus = "idle" | "syncing" | "synced" | "error"
+
 function loadProfile(): UserProfile {
   if (typeof window === "undefined") return defaultProfile
   try {
@@ -151,11 +179,20 @@ type ProfileContextType = {
   profile: UserProfile
   /** Last error from GET /api/me/profile (validation, auth, network). */
   profileLoadError: string | null
+  serverSyncStatus: ServerSyncStatus
+  /** Shown after login/refresh when local weight history differed from server before merge. */
+  profileMergeNotice: string | null
+  dismissProfileMergeNotice: () => void
   setProfile: (next: UserProfile) => void
   updateProfile: (patch: Partial<UserProfile>) => void
   /** Records weight for `date` (default today). Syncs `weightKg` to latest. POSTs when online. */
   recordWeightKg: (weightKg: number, date?: string) => Promise<void>
   getLatestWeightKg: () => number | null
+  patchWeightEntry: (
+    id: string,
+    patch: { weightKg?: number; date?: string },
+  ) => Promise<void>
+  removeWeightEntry: (id: string) => Promise<void>
   /** GET /api/me/profile — merges into local profile when online. */
   refreshProfileFromServer: () => Promise<void>
   /** Apply a server snapshot (e.g. after PUT) without clearing weight history. */
@@ -168,6 +205,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const { apiMode, user } = useAuth()
   const [profile, setProfileState] = useState<UserProfile>(defaultProfile)
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null)
+  const [serverSyncStatus, setServerSyncStatus] = useState<ServerSyncStatus>("idle")
+  const [profileMergeNotice, setProfileMergeNotice] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -176,17 +215,32 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
+    if (!apiMode) {
+      setServerSyncStatus("idle")
+      setProfileMergeNotice(null)
+    }
+  }, [apiMode])
+
+  useEffect(() => {
     if (!ready || !apiMode || !user) {
       setProfileLoadError(null)
+      if (!apiMode || !user) setServerSyncStatus("idle")
       return
     }
     let cancelled = false
     setProfileLoadError(null)
+    setServerSyncStatus("syncing")
     Promise.all([apiGetProfile(), apiListWeightEntries()])
       .then(([server, weights]) => {
         if (!cancelled) {
           setProfileLoadError(null)
-          setProfileState((prev) => applyProfileAndOptionalWeightHistory(prev, server, weights))
+          let notice: string | null = null
+          setProfileState((prev) => {
+            notice = computeWeightMergeNotice(prev.weightHistory, weights)
+            return applyProfileAndOptionalWeightHistory(prev, server, weights)
+          })
+          setProfileMergeNotice(notice)
+          setServerSyncStatus("synced")
         }
       })
       .catch((e: unknown) => {
@@ -194,6 +248,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
           setProfileLoadError(
             e instanceof Error ? e.message : "فشل تحميل الملف الشخصي من الخادم",
           )
+          setServerSyncStatus("error")
         }
       })
     return () => {
@@ -228,14 +283,26 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const refreshProfileFromServer = useCallback(async () => {
     if (!apiMode || !user) return
     setProfileLoadError(null)
+    setServerSyncStatus("syncing")
     try {
       const [server, weights] = await Promise.all([apiGetProfile(), apiListWeightEntries()])
       setProfileLoadError(null)
-      setProfileState((prev) => applyProfileAndOptionalWeightHistory(prev, server, weights))
+      let notice: string | null = null
+      setProfileState((prev) => {
+        notice = computeWeightMergeNotice(prev.weightHistory, weights)
+        return applyProfileAndOptionalWeightHistory(prev, server, weights)
+      })
+      setProfileMergeNotice(notice)
+      setServerSyncStatus("synced")
     } catch (e: unknown) {
       setProfileLoadError(e instanceof Error ? e.message : "فشل تحميل الملف الشخصي من الخادم")
+      setServerSyncStatus("error")
     }
   }, [apiMode, user])
+
+  const dismissProfileMergeNotice = useCallback(() => {
+    setProfileMergeNotice(null)
+  }, [])
 
   /** Refetch when tab/window regains attention (another device may have updated the profile). */
   useEffect(() => {
@@ -314,24 +381,100 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     [apiMode, user],
   )
 
+  const patchWeightEntry = useCallback(
+    async (id: string, patch: { weightKg?: number; date?: string }) => {
+      if (apiMode && user) {
+        const updated = await apiPatchWeightEntry(id, patch)
+        setProfileState((prev) => {
+          const nextHist = prev.weightHistory
+            .map((e) =>
+              e.id === id ? { id: updated.id, date: updated.date, weightKg: updated.weightKg } : e,
+            )
+            .sort((a, b) => a.date.localeCompare(b.date))
+          return {
+            ...prev,
+            weightHistory: nextHist,
+            weightKg: tailWeightKgFromHistory(nextHist) ?? prev.weightKg,
+          }
+        })
+        return
+      }
+      setProfileState((prev) => {
+        const nextHist = prev.weightHistory
+          .map((e) =>
+            e.id === id
+              ? {
+                  ...e,
+                  date: patch.date ?? e.date,
+                  weightKg: patch.weightKg ?? e.weightKg,
+                }
+              : e,
+          )
+          .sort((a, b) => a.date.localeCompare(b.date))
+        return {
+          ...prev,
+          weightHistory: nextHist,
+          weightKg: tailWeightKgFromHistory(nextHist) ?? prev.weightKg,
+        }
+      })
+    },
+    [apiMode, user],
+  )
+
+  const removeWeightEntry = useCallback(
+    async (id: string) => {
+      if (apiMode && user) {
+        await apiDeleteWeightEntry(id)
+        setProfileState((prev) => {
+          const nextHist = prev.weightHistory.filter((e) => e.id !== id)
+          return {
+            ...prev,
+            weightHistory: nextHist,
+            weightKg: tailWeightKgFromHistory(nextHist),
+          }
+        })
+        return
+      }
+      setProfileState((prev) => {
+        const nextHist = prev.weightHistory.filter((e) => e.id !== id)
+        return {
+          ...prev,
+          weightHistory: nextHist,
+          weightKg: tailWeightKgFromHistory(nextHist),
+        }
+      })
+    },
+    [apiMode, user],
+  )
+
   const value = useMemo(
     () => ({
       profile,
       profileLoadError,
+      serverSyncStatus,
+      profileMergeNotice,
+      dismissProfileMergeNotice,
       setProfile,
       updateProfile,
       recordWeightKg,
       getLatestWeightKg,
+      patchWeightEntry,
+      removeWeightEntry,
       refreshProfileFromServer,
       applyServerProfileRead,
     }),
     [
       profile,
       profileLoadError,
+      serverSyncStatus,
+      profileMergeNotice,
+      dismissProfileMergeNotice,
       setProfile,
       updateProfile,
       recordWeightKg,
       getLatestWeightKg,
+      patchWeightEntry,
+      removeWeightEntry,
       refreshProfileFromServer,
       applyServerProfileRead,
     ]

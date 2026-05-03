@@ -7,6 +7,8 @@ import { Dashboard } from "@/components/dashboard"
 import { HabitsPage } from "@/components/habits-page"
 import { SettingsPage } from "@/components/settings-page"
 import { BottomNav } from "@/components/bottom-nav"
+import { RouteErrorBoundary } from "@/components/route-error-boundary"
+import { SyncStatusBanner } from "@/components/sync-status-banner"
 
 type Tab = "dashboard" | "habits" | "settings"
 
@@ -35,9 +37,12 @@ export function AppShell() {
   return (
     <div className="min-h-dvh bg-background pb-[calc(env(safe-area-inset-bottom,0px)+9.5rem)]">
       <main className="relative z-0 max-w-lg mx-auto">
-        {activeTab === "dashboard" && <Dashboard />}
-        {activeTab === "habits" && <HabitsPage />}
-        {activeTab === "settings" && <SettingsPage />}
+        <SyncStatusBanner />
+        <RouteErrorBoundary key={activeTab} title="تعذر عرض هذه الصفحة">
+          {activeTab === "dashboard" && <Dashboard />}
+          {activeTab === "habits" && <HabitsPage />}
+          {activeTab === "settings" && <SettingsPage />}
+        </RouteErrorBoundary>
       </main>
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </div>

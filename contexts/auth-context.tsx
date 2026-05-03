@@ -1,26 +1,38 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useState, useEffect, useCallback } from "react"
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react"
 import { AUTH_USER_STORAGE_KEY } from "@/lib/auth-constants"
-import { apiLogin, getApiConfig, hydrateApiConfig } from "@/lib/api"
+import { apiLogin, defaultSessionExpiresAtIso, getApiConfig, hydrateApiConfig } from "@/lib/api"
 
 const USER_KEY = AUTH_USER_STORAGE_KEY
+
+const SESSION_CHECK_MS = 60_000
 
 export type AuthUser = {
   id: string
   email: string
   name: string
   username: string
+  /** ISO time after which the client signs the user out (server hint from login). */
+  sessionExpiresAt: string
 }
 
 export type LoginResult = { ok: true } | { ok: false; message: string }
+
+function isSessionExpired(iso: string): boolean {
+  const t = Date.parse(iso)
+  if (!Number.isFinite(t)) return true
+  return Date.now() > t
+}
 
 type AuthContextType = {
   user: AuthUser | null
   /** True when API URL + token are available (build-time or runtime-env.json). */
   apiMode: boolean
   isLoading: boolean
+  /** Human-readable session end for settings (Arabic locale). */
+  sessionExpiresLabel: string | null
   login: (identifier: string, password: string) => Promise<LoginResult>
   logout: () => void
 }
@@ -36,12 +48,26 @@ function loadUserFromStorage(): AuthUser | null {
     if (typeof u.email !== "string" || typeof u.name !== "string") return null
     const id = typeof u.id === "string" && u.id ? u.id : ""
     if (!id || id === "demo") return null
-    return {
+    const sessionExpiresAt =
+      typeof u.sessionExpiresAt === "string" && u.sessionExpiresAt.trim() !== ""
+        ? u.sessionExpiresAt
+        : defaultSessionExpiresAtIso()
+    if (isSessionExpired(sessionExpiresAt)) {
+      localStorage.removeItem(USER_KEY)
+      return null
+    }
+    const next: AuthUser = {
       id,
       email: u.email,
       name: u.name,
-      username: typeof u.username === "string" && u.username ? u.username : u.email.split("@")[0] ?? "user",
+      username:
+        typeof u.username === "string" && u.username ? u.username : u.email.split("@")[0] ?? "user",
+      sessionExpiresAt,
     }
+    if (!u.sessionExpiresAt) {
+      localStorage.setItem(USER_KEY, JSON.stringify(next))
+    }
+    return next
   } catch {
     localStorage.removeItem(USER_KEY)
   }
@@ -74,6 +100,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const logout = useCallback(() => {
+    setUser(null)
+    localStorage.removeItem(USER_KEY)
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    const check = () => {
+      if (isSessionExpired(user.sessionExpiresAt)) {
+        logout()
+      }
+    }
+    check()
+    const id = setInterval(check, SESSION_CHECK_MS)
+    const onVis = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") check()
+    }
+    document.addEventListener("visibilitychange", onVis)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener("visibilitychange", onVis)
+    }
+  }, [user, logout])
+
   const login = useCallback(
     async (identifier: string, password: string): Promise<LoginResult> => {
       await hydrateApiConfig()
@@ -90,11 +140,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         const data = await apiLogin(ident, password)
+        const sessionExpiresAt = data.sessionExpiresAt ?? defaultSessionExpiresAtIso()
         const nextUser: AuthUser = {
           id: data.user.id,
           email: data.user.email,
           name: data.user.display_name,
           username: data.user.username,
+          sessionExpiresAt,
         }
         setUser(nextUser)
         localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
@@ -104,19 +156,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, message }
       }
     },
-    []
+    [],
   )
 
-  const logout = useCallback(() => {
-    setUser(null)
-    localStorage.removeItem(USER_KEY)
-  }, [])
+  const sessionExpiresLabel = useMemo(() => {
+    if (!user) return null
+    try {
+      return new Intl.DateTimeFormat("ar", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(user.sessionExpiresAt))
+    } catch {
+      return null
+    }
+  }, [user])
 
-  return (
-    <AuthContext.Provider value={{ user, apiMode, isLoading, login, logout }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({
+      user,
+      apiMode,
+      isLoading,
+      sessionExpiresLabel,
+      login,
+      logout,
+    }),
+    [user, apiMode, isLoading, sessionExpiresLabel, login, logout],
   )
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export const useAuth = () => {

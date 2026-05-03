@@ -1,7 +1,7 @@
 "use client"
 
 import { useAuth } from "@/contexts/auth-context"
-import { apiPutProfile, profileToApiBody } from "@/lib/api"
+import { apiChangePassword, apiPutProfile, profileToApiBody } from "@/lib/api"
 import { parseProfileBirthday, useProfile, type ProfileGender } from "@/contexts/profile-context"
 import { useTheme } from "next-themes"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,12 +16,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { LogOut, Moon, Sun, User, Smartphone, Ruler, Scale, Target, Flame, Calendar, VenusAndMars } from "lucide-react"
+import {
+  LogOut,
+  Moon,
+  Sun,
+  User,
+  Smartphone,
+  Ruler,
+  Scale,
+  Target,
+  Flame,
+  Calendar,
+  VenusAndMars,
+  KeyRound,
+} from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
 export function SettingsPage() {
-  const { user, logout, apiMode } = useAuth()
+  const { user, logout, apiMode, sessionExpiresLabel } = useAuth()
   const { profile, profileLoadError, updateProfile, recordWeightKg, applyServerProfileRead } =
     useProfile()
   const { theme, setTheme } = useTheme()
@@ -37,6 +50,11 @@ export function SettingsPage() {
   const [profileSyncError, setProfileSyncError] = useState("")
   const [profileSaveOk, setProfileSaveOk] = useState(false)
   const saveOkTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [pwOld, setPwOld] = useState("")
+  const [pwNew, setPwNew] = useState("")
+  const [pwConfirm, setPwConfirm] = useState("")
+  const [pwBusy, setPwBusy] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -125,6 +143,35 @@ export function SettingsPage() {
         setProfileSaveOk(false)
         saveOkTimer.current = null
       }, 5000)
+    }
+  }
+
+  const handleChangePassword = async () => {
+    if (!user) return
+    if (pwNew.length < 8) {
+      toast.error("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل")
+      return
+    }
+    if (pwNew !== pwConfirm) {
+      toast.error("تأكيد كلمة المرور غير مطابق")
+      return
+    }
+    setPwBusy(true)
+    try {
+      const identifier = user.email || user.username
+      await apiChangePassword({
+        identifier,
+        oldPassword: pwOld,
+        newPassword: pwNew,
+      })
+      toast.success("تم تغيير كلمة المرور")
+      setPwOld("")
+      setPwNew("")
+      setPwConfirm("")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "تعذر تغيير كلمة المرور")
+    } finally {
+      setPwBusy(false)
     }
   }
 
@@ -281,6 +328,72 @@ export function SettingsPage() {
           </Button>
         </CardContent>
       </Card>
+
+      {apiMode && user ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <KeyRound className="w-4 h-4" />
+              الأمان وكلمة المرور
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {sessionExpiresLabel ? (
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                تنتهي جلسة هذا الجهاز تقريباً في:{" "}
+                <span className="font-medium text-foreground" dir="auto">
+                  {sessionExpiresLabel}
+                </span>
+                . بعدها سُطلب منك تسجيل الدخول مجدداً.
+              </p>
+            ) : null}
+            <div className="grid gap-3">
+              <Field>
+                <FieldLabel>كلمة المرور الحالية</FieldLabel>
+                <Input
+                  type="password"
+                  value={pwOld}
+                  onChange={(e) => setPwOld(e.target.value)}
+                  autoComplete="current-password"
+                  dir="ltr"
+                  className="text-left"
+                />
+              </Field>
+              <Field>
+                <FieldLabel>كلمة المرور الجديدة</FieldLabel>
+                <Input
+                  type="password"
+                  value={pwNew}
+                  onChange={(e) => setPwNew(e.target.value)}
+                  autoComplete="new-password"
+                  dir="ltr"
+                  className="text-left"
+                />
+              </Field>
+              <Field>
+                <FieldLabel>تأكيد الجديدة</FieldLabel>
+                <Input
+                  type="password"
+                  value={pwConfirm}
+                  onChange={(e) => setPwConfirm(e.target.value)}
+                  autoComplete="new-password"
+                  dir="ltr"
+                  className="text-left"
+                />
+              </Field>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              disabled={pwBusy}
+              onClick={() => void handleChangePassword()}
+            >
+              {pwBusy ? "جاري الحفظ…" : "تحديث كلمة المرور"}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Appearance */}
       <Card>

@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { useProfile } from "@/contexts/profile-context"
 import { useAuth } from "@/contexts/auth-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Dialog,
   DialogContent,
@@ -14,15 +15,43 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Scale } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Scale, Pencil, Trash2 } from "lucide-react"
+import type { WeightHistoryEntry } from "@/contexts/profile-context"
 
 export function HabitsWeightCard() {
   const { apiMode } = useAuth()
-  const { getLatestWeightKg, recordWeightKg } = useProfile()
+  const {
+    profile,
+    getLatestWeightKg,
+    recordWeightKg,
+    patchWeightEntry,
+    removeWeightEntry,
+  } = useProfile()
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState("")
   const [saving, setSaving] = useState(false)
+
+  const [editEntry, setEditEntry] = useState<WeightHistoryEntry | null>(null)
+  const [editInput, setEditInput] = useState("")
+  const [editSaving, setEditSaving] = useState(false)
+
+  const [deleteEntry, setDeleteEntry] = useState<WeightHistoryEntry | null>(null)
+  const [deleteSaving, setDeleteSaving] = useState(false)
+
   const latest = getLatestWeightKg()
+
+  const sortedHistory = useMemo(() => {
+    return [...profile.weightHistory].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 21)
+  }, [profile.weightHistory])
 
   const handleSave = async () => {
     const v = parseFloat(input.replace(",", "."))
@@ -40,6 +69,44 @@ export function HabitsWeightCard() {
       toast.error(e instanceof Error ? e.message : "تعذر حفظ الوزن")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const openEdit = (e: WeightHistoryEntry) => {
+    setEditEntry(e)
+    setEditInput(String(e.weightKg))
+  }
+
+  const handleEditSave = async () => {
+    if (!editEntry) return
+    const v = parseFloat(editInput.replace(",", "."))
+    if (!Number.isFinite(v) || v <= 0 || v > 500) {
+      toast.error("أدخل وزناً بين 0.1 و 500 كغ")
+      return
+    }
+    setEditSaving(true)
+    try {
+      await patchWeightEntry(editEntry.id, { weightKg: v })
+      setEditEntry(null)
+      toast.success("تم تحديث السجل")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "تعذر التحديث")
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deleteEntry) return
+    setDeleteSaving(true)
+    try {
+      await removeWeightEntry(deleteEntry.id)
+      setDeleteEntry(null)
+      toast.success("تم حذف السجل")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "تعذر الحذف")
+    } finally {
+      setDeleteSaving(false)
     }
   }
 
@@ -68,6 +135,49 @@ export function HabitsWeightCard() {
           <Button className="w-full" variant="secondary" onClick={() => setOpen(true)}>
             تحديث الوزن
           </Button>
+
+          {sortedHistory.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">آخر السجلات</p>
+              <ScrollArea className="h-[min(14rem,40vh)] rounded-md border border-border/60">
+                <ul className="p-2 space-y-1">
+                  {sortedHistory.map((row) => (
+                    <li
+                      key={row.id}
+                      className="flex items-center justify-between gap-2 rounded-md bg-background/60 px-2 py-1.5 text-sm"
+                    >
+                      <span className="tabular-nums text-muted-foreground" dir="ltr">
+                        {row.date}
+                      </span>
+                      <span className="font-semibold tabular-nums">{row.weightKg.toFixed(1)} كغ</span>
+                      <div className="flex gap-0.5 shrink-0">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          aria-label="تعديل"
+                          onClick={() => openEdit(row)}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive"
+                          aria-label="حذف"
+                          onClick={() => setDeleteEntry(row)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </ScrollArea>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -97,6 +207,63 @@ export function HabitsWeightCard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={editEntry != null} onOpenChange={(o) => !o && setEditEntry(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>تعديل الوزن</DialogTitle>
+          </DialogHeader>
+          {editEntry ? (
+            <>
+              <p className="text-xs text-muted-foreground" dir="ltr">
+                {editEntry.date}
+              </p>
+              <div className="space-y-2 py-2">
+                <label className="text-sm font-medium text-foreground">الوزن (كغ)</label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={editInput}
+                  onChange={(e) => setEditInput(e.target.value)}
+                  className="text-lg"
+                />
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button variant="outline" onClick={() => setEditEntry(null)}>
+                  إلغاء
+                </Button>
+                <Button onClick={() => void handleEditSave()} disabled={editSaving}>
+                  {editSaving ? "جاري الحفظ…" : "حفظ"}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteEntry != null} onOpenChange={(o) => !o && setDeleteEntry(null)}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>حذف سجل الوزن؟</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteEntry
+                ? `سيتم حذف يوم ${deleteEntry.date} (${deleteEntry.weightKg.toFixed(1)} كغ).`
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-0 flex-row-reverse sm:flex-row-reverse">
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteSaving}
+              onClick={() => void handleDelete()}
+            >
+              {deleteSaving ? "…" : "حذف"}
+            </Button>
+            <AlertDialogCancel disabled={deleteSaving}>إلغاء</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

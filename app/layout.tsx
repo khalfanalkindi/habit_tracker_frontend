@@ -3,6 +3,7 @@ import { Tajawal } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AppToaster } from '@/components/app-toaster'
+import { ServiceWorkerRegister } from '@/components/service-worker-register'
 import { AuthProvider } from '@/contexts/auth-context'
 import { ProfileProvider } from '@/contexts/profile-context'
 import { HabitsProvider } from '@/contexts/habits-context'
@@ -76,6 +77,7 @@ export default function RootLayout({
             </ProfileProvider>
           </AuthProvider>
           <AppToaster />
+          <ServiceWorkerRegister />
         </ThemeProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
