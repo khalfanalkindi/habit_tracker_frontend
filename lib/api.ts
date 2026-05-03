@@ -178,40 +178,6 @@ export async function apiChangePassword(input: {
   if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
 }
 
-export type ForgotPasswordResponse = {
-  message: string
-  resetLink?: string | null
-}
-
-export async function apiForgotPassword(identifier: string): Promise<ForgotPasswordResponse> {
-  const { baseUrl, configured } = getApiConfig()
-  if (!configured) throw new Error("API not configured")
-  const res = await fetch(`${baseUrl}/api/auth/forgot-password`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ identifier: identifier.trim() }),
-  })
-  const data: unknown = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
-  if (!data || typeof data !== "object") throw new Error("Invalid response")
-  const o = data as Record<string, unknown>
-  const message = typeof o.message === "string" ? o.message : ""
-  const resetLink = typeof o.resetLink === "string" ? o.resetLink : undefined
-  return { message, resetLink }
-}
-
-export async function apiResetPassword(token: string, newPassword: string): Promise<void> {
-  const { baseUrl, configured } = getApiConfig()
-  if (!configured) throw new Error("API not configured")
-  const res = await fetch(`${baseUrl}/api/auth/reset-password`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ token: token.trim(), newPassword }),
-  })
-  const data: unknown = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
-}
-
 export async function apiGetProfile(): Promise<ProfileRead> {
   const { baseUrl, configured } = getApiConfig()
   if (!configured) throw new Error("API not configured")

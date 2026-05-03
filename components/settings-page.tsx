@@ -338,6 +338,9 @@ export function SettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              تغيير كلمة المرور يتم من هنا فقط وأنت مسجّل الدخول. لا يوجد استعادة عبر البريد في هذا الإصدار.
+            </p>
             {sessionExpiresLabel ? (
               <p className="text-xs text-muted-foreground leading-relaxed">
                 تنتهي جلسة هذا الجهاز تقريباً في:{" "}
