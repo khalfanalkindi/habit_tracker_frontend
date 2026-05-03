@@ -8,6 +8,33 @@ import { getApiConfig } from "@/lib/api-config"
 
 export { getApiConfig, hydrateApiConfig } from "@/lib/api-config"
 
+/** Turn FastAPI `422` / error JSON into a single readable string for the UI. */
+export function formatFastApiErrorBody(data: unknown): string {
+  if (!data || typeof data !== "object") return "Request failed"
+  const detail = (data as { detail?: unknown }).detail
+  if (typeof detail === "string") return detail
+  if (Array.isArray(detail)) {
+    const parts = detail.map((item: unknown) => {
+      if (!item || typeof item !== "object") return ""
+      const o = item as { msg?: unknown; loc?: unknown[] }
+      const msg = typeof o.msg === "string" ? o.msg : ""
+      const loc = Array.isArray(o.loc) ? o.loc.filter((x) => typeof x === "string").join(".") : ""
+      if (msg && loc) return `${loc}: ${msg}`
+      return msg || JSON.stringify(item)
+    })
+    return parts.filter(Boolean).join(" · ") || "Request failed"
+  }
+  return "Request failed"
+}
+
+function errorMessageFromResponse(res: Response, data: unknown): string {
+  if (typeof data === "object" && data !== null) {
+    const m = formatFastApiErrorBody(data)
+    if (m !== "Request failed") return m
+  }
+  return res.statusText || "Request failed"
+}
+
 function userIdHeader(): Record<string, string> {
   if (typeof window === "undefined") return {}
   try {
@@ -92,14 +119,9 @@ export async function apiLogin(identifier: string, password: string): Promise<Lo
     body: JSON.stringify({ identifier: identifier.trim(), password }),
   })
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: unknown }
-    const d = err.detail
-    const msg = Array.isArray(d)
-      ? d.map((x: { msg?: string }) => x.msg ?? "").join("; ")
-      : typeof d === "string"
-        ? d
-        : res.statusText
-    throw new Error(msg || res.statusText)
+    const err: unknown = await res.json().catch(() => ({}))
+    const msg = formatFastApiErrorBody(err)
+    throw new Error(msg === "Request failed" ? res.statusText || msg : msg)
   }
   return res.json() as Promise<LoginResponse>
 }
@@ -108,8 +130,9 @@ export async function apiGetProfile(): Promise<ProfileRead> {
   const { baseUrl, configured } = getApiConfig()
   if (!configured) throw new Error("API not configured")
   const res = await fetch(`${baseUrl}/api/me/profile`, { headers: authHeaders() })
-  if (!res.ok) throw new Error(await res.text())
-  return normalizeProfileRead(await res.json())
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  return normalizeProfileRead(data)
 }
 
 export async function apiPutProfile(body: ProfileRead): Promise<ProfileRead> {
@@ -120,8 +143,9 @@ export async function apiPutProfile(body: ProfileRead): Promise<ProfileRead> {
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(await res.text())
-  return normalizeProfileRead(await res.json())
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  return normalizeProfileRead(data)
 }
 
 /** Payload for PUT /api/me/profile (no local-only fields). */

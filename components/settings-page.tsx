@@ -17,11 +17,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { LogOut, Moon, Sun, User, Smartphone, Ruler, Scale, Target, Flame, Calendar, VenusAndMars } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { toast } from "sonner"
 
 export function SettingsPage() {
   const { user, logout, apiMode } = useAuth()
-  const { profile, updateProfile, recordWeightKg, applyServerProfileRead } = useProfile()
+  const { profile, profileLoadError, updateProfile, recordWeightKg, applyServerProfileRead } =
+    useProfile()
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
 
@@ -33,9 +35,17 @@ export function SettingsPage() {
   const [genderUi, setGenderUi] = useState<"" | ProfileGender>("")
   const [birthdayUi, setBirthdayUi] = useState("")
   const [profileSyncError, setProfileSyncError] = useState("")
+  const [profileSaveOk, setProfileSaveOk] = useState(false)
+  const saveOkTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (saveOkTimer.current) clearTimeout(saveOkTimer.current)
+    }
   }, [])
 
   useEffect(() => {
@@ -53,6 +63,11 @@ export function SettingsPage() {
 
   const handleSaveBodyStats = async () => {
     setProfileSyncError("")
+    if (saveOkTimer.current) {
+      clearTimeout(saveOkTimer.current)
+      saveOkTimer.current = null
+    }
+    setProfileSaveOk(false)
     const hm = parseFloat(heightM.replace(",", "."))
     const wk = parseFloat(weightKg.replace(",", "."))
     const dc = parseInt(dailyCalories.replace(/\s/g, ""), 10)
@@ -89,9 +104,24 @@ export function SettingsPage() {
         })
         const saved = await apiPutProfile(body)
         applyServerProfileRead(saved)
-      } catch {
-        setProfileSyncError("تعذر حفظ الملف على الخادم. تحقق من الاتصال.")
+        toast.success("تم حفظ الملف الشخصي بنجاح")
+        setProfileSaveOk(true)
+        saveOkTimer.current = setTimeout(() => {
+          setProfileSaveOk(false)
+          saveOkTimer.current = null
+        }, 5000)
+      } catch (e: unknown) {
+        setProfileSyncError(
+          e instanceof Error ? e.message : "تعذر حفظ الملف على الخادم. تحقق من الاتصال.",
+        )
       }
+    } else {
+      toast.success("تم حفظ الإعدادات على جهازك")
+      setProfileSaveOk(true)
+      saveOkTimer.current = setTimeout(() => {
+        setProfileSaveOk(false)
+        saveOkTimer.current = null
+      }, 5000)
     }
   }
 
@@ -100,6 +130,20 @@ export function SettingsPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">الإعدادات</h1>
+        {profileSaveOk ? (
+          <p
+            className="text-sm mt-2 rounded-lg border border-emerald-500/35 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 px-3 py-2"
+            dir="auto"
+            role="status"
+          >
+            تم تحديث الملف الشخصي بنجاح.
+          </p>
+        ) : null}
+        {profileLoadError && (
+          <p className="text-sm text-destructive mt-2" dir="auto">
+            {profileLoadError}
+          </p>
+        )}
         <p className="text-muted-foreground text-sm">إدارة تفضيلاتك</p>
       </div>
 
@@ -225,7 +269,9 @@ export function SettingsPage() {
             </Field>
           </div>
           {profileSyncError ? (
-            <p className="text-sm text-destructive text-center">{profileSyncError}</p>
+            <p className="text-sm text-destructive text-center" dir="auto">
+              {profileSyncError}
+            </p>
           ) : null}
           <Button className="w-full" onClick={() => void handleSaveBodyStats()}>
             حفظ الجسم والأهداف

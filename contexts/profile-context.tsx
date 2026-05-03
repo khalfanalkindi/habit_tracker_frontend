@@ -73,6 +73,18 @@ export function mergeUserProfileFromServer(local: UserProfile, server: ProfileRe
     const m = server.birthday.match(/^(\d{4}-\d{2}-\d{2})/)
     if (m) b = m[1]
   }
+  const wk = server.weightKg
+  let weightHistory = local.weightHistory
+  if (typeof wk === "number" && Number.isFinite(wk) && wk > 0) {
+    const d = todayLocalYMD()
+    const existing = local.weightHistory.find((e) => e.date === d)
+    const entry: WeightHistoryEntry = existing
+      ? { ...existing, weightKg: wk }
+      : { id: crypto.randomUUID(), date: d, weightKg: wk }
+    weightHistory = [...local.weightHistory.filter((e) => e.date !== d), entry].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    )
+  }
   return {
     ...local,
     heightM: server.heightM ?? null,
@@ -81,6 +93,7 @@ export function mergeUserProfileFromServer(local: UserProfile, server: ProfileRe
     weightGoalKg: server.weightGoalKg ?? null,
     birthday: b,
     gender: g,
+    weightHistory,
   }
 }
 
@@ -112,6 +125,8 @@ export function computeBmi(weightKg: number | null, heightM: number | null): num
 
 type ProfileContextType = {
   profile: UserProfile
+  /** Last error from GET /api/me/profile (validation, auth, network). */
+  profileLoadError: string | null
   setProfile: (next: UserProfile) => void
   updateProfile: (patch: Partial<UserProfile>) => void
   /** Records weight for `date` (default today). Syncs `weightKg` to latest. */
@@ -128,6 +143,7 @@ const ProfileContext = createContext<ProfileContextType | undefined>(undefined)
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const { apiMode, user } = useAuth()
   const [profile, setProfileState] = useState<UserProfile>(defaultProfile)
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -136,21 +152,41 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (!ready || !apiMode || !user) return
+    if (!ready || !apiMode || !user) {
+      setProfileLoadError(null)
+      return
+    }
     let cancelled = false
+    setProfileLoadError(null)
     apiGetProfile()
       .then((server) => {
         if (!cancelled) {
+          setProfileLoadError(null)
           setProfileState((prev) => mergeUserProfileFromServer(prev, server))
         }
       })
-      .catch(() => {
-        /* keep local profile */
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setProfileLoadError(
+            e instanceof Error ? e.message : "فشل تحميل الملف الشخصي من الخادم",
+          )
+        }
       })
     return () => {
       cancelled = true
     }
   }, [ready, apiMode, user?.id])
+
+  /** Same browser, another tab wrote profile to localStorage — reload. */
+  useEffect(() => {
+    if (!ready) return
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY) return
+      setProfileState(loadProfile())
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [ready])
 
   useEffect(() => {
     if (!ready) return
@@ -167,22 +203,48 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfileFromServer = useCallback(async () => {
     if (!apiMode || !user) return
+    setProfileLoadError(null)
     try {
       const server = await apiGetProfile()
+      setProfileLoadError(null)
       setProfileState((prev) => mergeUserProfileFromServer(prev, server))
-    } catch {
-      /* offline */
+    } catch (e: unknown) {
+      setProfileLoadError(e instanceof Error ? e.message : "فشل تحميل الملف الشخصي من الخادم")
     }
   }, [apiMode, user])
+
+  /** Refetch when tab/window regains attention (another device may have updated the profile). */
+  useEffect(() => {
+    if (!ready || !apiMode || !user) return
+    let debounce: ReturnType<typeof setTimeout> | null = null
+    const schedule = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return
+      if (debounce) clearTimeout(debounce)
+      debounce = setTimeout(() => {
+        debounce = null
+        void refreshProfileFromServer()
+      }, 300)
+    }
+    document.addEventListener("visibilitychange", schedule)
+    window.addEventListener("focus", schedule)
+    return () => {
+      document.removeEventListener("visibilitychange", schedule)
+      window.removeEventListener("focus", schedule)
+      if (debounce) clearTimeout(debounce)
+    }
+  }, [ready, apiMode, user?.id, refreshProfileFromServer])
 
   const applyServerProfileRead = useCallback((server: ProfileRead) => {
     setProfileState((prev) => mergeUserProfileFromServer(prev, server))
   }, [])
 
   const getLatestWeightKg = useCallback((): number | null => {
+    // Prefer profile.weightKg (synced from API / settings) so another device’s update
+    // is not overridden by an older tail of local weightHistory.
+    if (profile.weightKg != null && Number.isFinite(profile.weightKg)) return profile.weightKg
     const h = [...profile.weightHistory].sort((a, b) => a.date.localeCompare(b.date))
-    if (h.length === 0) return profile.weightKg
-    return h[h.length - 1]?.weightKg ?? profile.weightKg
+    if (h.length === 0) return null
+    return h[h.length - 1]?.weightKg ?? null
   }, [profile.weightHistory, profile.weightKg])
 
   const recordWeightKg = useCallback((weightKg: number, date?: string) => {
@@ -206,6 +268,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       profile,
+      profileLoadError,
       setProfile,
       updateProfile,
       recordWeightKg,
@@ -215,6 +278,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       profile,
+      profileLoadError,
       setProfile,
       updateProfile,
       recordWeightKg,

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Tajawal } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
+import { AppToaster } from '@/components/app-toaster'
 import { AuthProvider } from '@/contexts/auth-context'
 import { ProfileProvider } from '@/contexts/profile-context'
 import { HabitsProvider } from '@/contexts/habits-context'
@@ -74,6 +75,7 @@ export default function RootLayout({
               </HabitsProvider>
             </ProfileProvider>
           </AuthProvider>
+          <AppToaster />
         </ThemeProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
