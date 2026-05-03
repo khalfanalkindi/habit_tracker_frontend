@@ -350,3 +350,201 @@ export async function apiDeleteFoodLogEntry(id: string): Promise<void> {
   const data: unknown = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
 }
+
+// --- Exercise entries (/api/me/exercise-entries) ---
+
+export type ExerciseEntryRead = {
+  id: string
+  dayOfWeek: number
+  exerciseType: string
+  duration: number | null
+  completed: boolean
+  date: string | null
+}
+
+function intOrNull(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return Math.trunc(v)
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v)
+    if (Number.isFinite(n)) return Math.trunc(n)
+  }
+  return null
+}
+
+export function normalizeExerciseEntry(raw: unknown): ExerciseEntryRead {
+  if (!raw || typeof raw !== "object") throw new Error("Invalid exercise entry")
+  const o = raw as Record<string, unknown>
+  const id = typeof o.id === "string" ? o.id : ""
+  const dow = o.dayOfWeek ?? o.day_of_week
+  let dayOfWeek = 0
+  if (typeof dow === "number" && Number.isFinite(dow)) dayOfWeek = Math.trunc(dow)
+  else if (typeof dow === "string" && dow.trim() !== "") {
+    const n = parseInt(dow, 10)
+    if (Number.isFinite(n)) dayOfWeek = n
+  }
+  dayOfWeek = Math.min(6, Math.max(0, dayOfWeek))
+  const et =
+    typeof o.exerciseType === "string"
+      ? o.exerciseType
+      : typeof o.exercise_type === "string"
+        ? o.exercise_type
+        : ""
+  const dur = o.duration ?? o.duration_minutes
+  const duration = intOrNull(dur)
+  const completed = Boolean(o.completed)
+  let date: string | null = null
+  const d = o.date ?? o.completed_on_date ?? o.completedOnDate
+  if (typeof d === "string") {
+    const m = d.match(/^(\d{4}-\d{2}-\d{2})/)
+    date = m ? m[1] : d.slice(0, 10)
+  }
+  return {
+    id,
+    dayOfWeek,
+    exerciseType: et,
+    duration,
+    completed,
+    date,
+  }
+}
+
+export async function apiListExerciseEntries(params?: {
+  dayOfWeek?: number
+}): Promise<ExerciseEntryRead[]> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const sp = new URLSearchParams()
+  if (params?.dayOfWeek !== undefined && params.dayOfWeek !== null) {
+    sp.set("dayOfWeek", String(params.dayOfWeek))
+  }
+  const q = sp.toString()
+  const url = `${baseUrl}/api/me/exercise-entries${q ? `?${q}` : ""}`
+  const res = await fetch(url, { headers: authHeaders() })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  if (!Array.isArray(data)) throw new Error("Invalid exercise list")
+  return data.map((item) => normalizeExerciseEntry(item))
+}
+
+export async function apiPostExerciseEntry(body: {
+  dayOfWeek: number
+  exerciseType: string
+  duration?: number | null
+  completed?: boolean
+  date?: string | null
+}): Promise<ExerciseEntryRead> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const payload: Record<string, unknown> = {
+    dayOfWeek: body.dayOfWeek,
+    exerciseType: body.exerciseType,
+    completed: body.completed ?? false,
+  }
+  if (body.duration !== undefined) payload.duration = body.duration
+  if (body.date !== undefined) payload.date = body.date
+  const res = await fetch(`${baseUrl}/api/me/exercise-entries`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload),
+  })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  return normalizeExerciseEntry(data)
+}
+
+export async function apiPatchExerciseEntry(
+  id: string,
+  patch: {
+    dayOfWeek?: number
+    exerciseType?: string
+    duration?: number | null
+    completed?: boolean
+    date?: string | null
+  }
+): Promise<ExerciseEntryRead> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const payload: Record<string, unknown> = {}
+  if (patch.dayOfWeek !== undefined) payload.dayOfWeek = patch.dayOfWeek
+  if (patch.exerciseType !== undefined) payload.exerciseType = patch.exerciseType
+  if ("duration" in patch) payload.duration = patch.duration
+  if (patch.completed !== undefined) payload.completed = patch.completed
+  if ("date" in patch) payload.date = patch.date
+  const res = await fetch(`${baseUrl}/api/me/exercise-entries/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload),
+  })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  return normalizeExerciseEntry(data)
+}
+
+export async function apiDeleteExerciseEntry(id: string): Promise<void> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const res = await fetch(`${baseUrl}/api/me/exercise-entries/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  })
+  if (res.status === 204) return
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+}
+
+/** One weight log per calendar day — matches backend `WeightEntryRead` (`date`, `weightKg`). */
+export type WeightEntryRead = {
+  id: string
+  date: string
+  weightKg: number
+}
+
+export function normalizeWeightEntry(raw: unknown): WeightEntryRead {
+  if (!raw || typeof raw !== "object") throw new Error("Invalid weight entry")
+  const o = raw as Record<string, unknown>
+  const id = typeof o.id === "string" ? o.id : ""
+  const w = num(o.weightKg ?? o.weight_kg)
+  if (w == null || w <= 0) throw new Error("Invalid weight value")
+  let ds = ""
+  const d = o.date ?? o.logged_date ?? o.loggedDate
+  if (typeof d === "string") {
+    const m = d.match(/^(\d{4}-\d{2}-\d{2})/)
+    ds = m ? m[1] : d.slice(0, 10)
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) throw new Error("Invalid weight entry date")
+  return { id, date: ds, weightKg: w }
+}
+
+export type WeightListParams = { date?: string; from?: string; to?: string }
+
+export async function apiListWeightEntries(params?: WeightListParams): Promise<WeightEntryRead[]> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const sp = new URLSearchParams()
+  if (params?.date) sp.set("date", params.date)
+  if (params?.from) sp.set("from", params.from)
+  if (params?.to) sp.set("to", params.to)
+  const q = sp.toString()
+  const url = `${baseUrl}/api/me/weight-entries${q ? `?${q}` : ""}`
+  const res = await fetch(url, { headers: authHeaders() })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  if (!Array.isArray(data)) throw new Error("Invalid weight list response")
+  return data.map((row) => normalizeWeightEntry(row))
+}
+
+export async function apiPostWeightEntry(input: {
+  date: string
+  weightKg: number
+}): Promise<WeightEntryRead> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const res = await fetch(`${baseUrl}/api/me/weight-entries`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ date: input.date, weightKg: input.weightKg }),
+  })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  return normalizeWeightEntry(data)
+}

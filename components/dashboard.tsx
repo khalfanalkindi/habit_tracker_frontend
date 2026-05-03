@@ -328,7 +328,7 @@ export function Dashboard() {
                   key={exercise.id}
                   variant="ghost"
                   className="w-full justify-start h-auto py-3 px-3"
-                  onClick={() => toggleExerciseCompletion(exercise.id)}
+                  onClick={() => void toggleExerciseCompletion(exercise.id)}
                 >
                   <div className="flex items-center gap-3 w-full">
                     <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-lg">

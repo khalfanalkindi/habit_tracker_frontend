@@ -3,7 +3,13 @@
 import type React from "react"
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 
-import { apiGetProfile, type ProfileRead } from "@/lib/api"
+import {
+  apiGetProfile,
+  apiListWeightEntries,
+  apiPostWeightEntry,
+  type ProfileRead,
+  type WeightEntryRead,
+} from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
 
 const STORAGE_KEY = "habit-tracker-profile"
@@ -97,6 +103,24 @@ export function mergeUserProfileFromServer(local: UserProfile, server: ProfileRe
   }
 }
 
+/** Merge profile from GET /profile; if the server returned any weight rows, use them as history. */
+function applyProfileAndOptionalWeightHistory(
+  local: UserProfile,
+  server: ProfileRead,
+  weightsFromApi: WeightEntryRead[],
+): UserProfile {
+  let next = mergeUserProfileFromServer(local, server)
+  if (weightsFromApi.length > 0) {
+    next = {
+      ...next,
+      weightHistory: weightsFromApi
+        .map((w) => ({ id: w.id, date: w.date, weightKg: w.weightKg }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    }
+  }
+  return next
+}
+
 function loadProfile(): UserProfile {
   if (typeof window === "undefined") return defaultProfile
   try {
@@ -129,8 +153,8 @@ type ProfileContextType = {
   profileLoadError: string | null
   setProfile: (next: UserProfile) => void
   updateProfile: (patch: Partial<UserProfile>) => void
-  /** Records weight for `date` (default today). Syncs `weightKg` to latest. */
-  recordWeightKg: (weightKg: number, date?: string) => void
+  /** Records weight for `date` (default today). Syncs `weightKg` to latest. POSTs when online. */
+  recordWeightKg: (weightKg: number, date?: string) => Promise<void>
   getLatestWeightKg: () => number | null
   /** GET /api/me/profile — merges into local profile when online. */
   refreshProfileFromServer: () => Promise<void>
@@ -158,11 +182,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     }
     let cancelled = false
     setProfileLoadError(null)
-    apiGetProfile()
-      .then((server) => {
+    Promise.all([apiGetProfile(), apiListWeightEntries()])
+      .then(([server, weights]) => {
         if (!cancelled) {
           setProfileLoadError(null)
-          setProfileState((prev) => mergeUserProfileFromServer(prev, server))
+          setProfileState((prev) => applyProfileAndOptionalWeightHistory(prev, server, weights))
         }
       })
       .catch((e: unknown) => {
@@ -205,9 +229,9 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     if (!apiMode || !user) return
     setProfileLoadError(null)
     try {
-      const server = await apiGetProfile()
+      const [server, weights] = await Promise.all([apiGetProfile(), apiListWeightEntries()])
       setProfileLoadError(null)
-      setProfileState((prev) => mergeUserProfileFromServer(prev, server))
+      setProfileState((prev) => applyProfileAndOptionalWeightHistory(prev, server, weights))
     } catch (e: unknown) {
       setProfileLoadError(e instanceof Error ? e.message : "فشل تحميل الملف الشخصي من الخادم")
     }
@@ -247,23 +271,48 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     return h[h.length - 1]?.weightKg ?? null
   }, [profile.weightHistory, profile.weightKg])
 
-  const recordWeightKg = useCallback((weightKg: number, date?: string) => {
-    const d = date ?? todayLocalYMD()
-    const entry: WeightHistoryEntry = {
-      id: crypto.randomUUID(),
-      date: d,
-      weightKg,
-    }
-    setProfileState((prev) => {
-      const withoutSameDay = prev.weightHistory.filter((e) => e.date !== d)
-      const nextHistory = [...withoutSameDay, entry].sort((a, b) => a.date.localeCompare(b.date))
-      return {
-        ...prev,
-        weightKg,
-        weightHistory: nextHistory,
+  const recordWeightKg = useCallback(
+    async (weightKg: number, date?: string) => {
+      const d = date ?? todayLocalYMD()
+      if (apiMode && user) {
+        const saved = await apiPostWeightEntry({ date: d, weightKg })
+        const entry: WeightHistoryEntry = {
+          id: saved.id,
+          date: saved.date,
+          weightKg: saved.weightKg,
+        }
+        setProfileState((prev) => {
+          const withoutSameDay = prev.weightHistory.filter((e) => e.date !== d)
+          const nextHistory = [...withoutSameDay, entry].sort((a, b) =>
+            a.date.localeCompare(b.date),
+          )
+          return {
+            ...prev,
+            weightKg,
+            weightHistory: nextHistory,
+          }
+        })
+        return
       }
-    })
-  }, [])
+      const entry: WeightHistoryEntry = {
+        id: crypto.randomUUID(),
+        date: d,
+        weightKg,
+      }
+      setProfileState((prev) => {
+        const withoutSameDay = prev.weightHistory.filter((e) => e.date !== d)
+        const nextHistory = [...withoutSameDay, entry].sort((a, b) =>
+          a.date.localeCompare(b.date),
+        )
+        return {
+          ...prev,
+          weightKg,
+          weightHistory: nextHistory,
+        }
+      })
+    },
+    [apiMode, user],
+  )
 
   const value = useMemo(
     () => ({

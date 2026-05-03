@@ -1,16 +1,21 @@
 "use client"
 
 import type React from "react"
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 
 import {
+  apiDeleteExerciseEntry,
   apiDeleteFoodLogEntry,
   apiDeleteFoodOption,
+  apiListExerciseEntries,
   apiListFoodLogEntries,
   apiListFoodOptions,
+  apiPatchExerciseEntry,
   apiPatchFoodOption,
+  apiPostExerciseEntry,
   apiPostFoodLogEntry,
   apiPostFoodOption,
+  type ExerciseEntryRead,
   type FoodLogEntryRead,
   type FoodOptionRead,
 } from "@/lib/api"
@@ -54,6 +59,7 @@ export const EXERCISE_TYPES = [
   { id: "swim", label: "سباحة", icon: "🏊" },
   { id: "yoga", label: "يوغا", icon: "🧘" },
   { id: "cycling", label: "دراجة", icon: "🚴" },
+  { id: "resistance", label: "مقاومة", icon: "💪" },
 ]
 
 // Food option (the registered food database)
@@ -90,6 +96,18 @@ export type ExerciseEntry = {
   duration?: number
   completed: boolean
   date?: string
+}
+
+function wireToExerciseEntry(w: ExerciseEntryRead): ExerciseEntry {
+  const e: ExerciseEntry = {
+    id: w.id,
+    dayOfWeek: w.dayOfWeek,
+    exerciseType: w.exerciseType,
+    completed: w.completed,
+  }
+  if (w.duration != null && Number.isFinite(w.duration)) e.duration = w.duration
+  if (w.date) e.date = w.date
+  return e
 }
 
 function wireToFoodOption(w: FoodOptionRead): FoodOption {
@@ -146,9 +164,9 @@ type HabitsContextType = {
   getWeeklyMacros: () => { calories: number; protein: number; carbs: number; fat: number }
 
   exercisePlan: ExerciseEntry[]
-  addExercise: (dayOfWeek: number, exerciseType: string, duration?: number) => void
-  removeExercise: (id: string) => void
-  toggleExerciseCompletion: (id: string) => void
+  addExercise: (dayOfWeek: number, exerciseType: string, duration?: number) => Promise<void>
+  removeExercise: (id: string) => Promise<void>
+  toggleExerciseCompletion: (id: string) => Promise<void>
   getExercisesForDay: (dayOfWeek: number) => ExerciseEntry[]
   getWeeklyExerciseStats: () => { completed: number; total: number }
 }
@@ -160,7 +178,12 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const [foodOptions, setFoodOptions] = useState<FoodOption[]>([])
   const [foodLogs, setFoodLogs] = useState<DailyFoodLog[]>([])
   const [exercisePlan, setExercisePlan] = useState<ExerciseEntry[]>([])
+  const exercisePlanRef = useRef<ExerciseEntry[]>([])
   const [isInitialized, setIsInitialized] = useState(false)
+
+  useEffect(() => {
+    exercisePlanRef.current = exercisePlan
+  }, [exercisePlan])
 
   useEffect(() => {
     const storedOptions = localStorage.getItem("habit-tracker-food-options")
@@ -194,15 +217,17 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     setIsInitialized(true)
   }, [])
 
-  const loadFoodFromApi = useCallback(async () => {
+  const loadSyncedHabitsFromApi = useCallback(async () => {
     if (!apiMode || !user) return
     try {
-      const [options, logs] = await Promise.all([
+      const [options, logs, exercises] = await Promise.all([
         apiListFoodOptions(),
         apiListFoodLogEntries(),
+        apiListExerciseEntries(),
       ])
       setFoodOptions(options.map(wireToFoodOption))
       setFoodLogs(groupLogsFromApi(logs))
+      setExercisePlan(exercises.map(wireToExerciseEntry))
     } catch {
       /* keep local cache on failure */
     }
@@ -213,13 +238,15 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false
     void (async () => {
       try {
-        const [options, logs] = await Promise.all([
+        const [options, logs, exercises] = await Promise.all([
           apiListFoodOptions(),
           apiListFoodLogEntries(),
+          apiListExerciseEntries(),
         ])
         if (!cancelled) {
           setFoodOptions(options.map(wireToFoodOption))
           setFoodLogs(groupLogsFromApi(logs))
+          setExercisePlan(exercises.map(wireToExerciseEntry))
         }
       } catch {
         /* keep hydrated localStorage data */
@@ -238,7 +265,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       if (debounce) clearTimeout(debounce)
       debounce = setTimeout(() => {
         debounce = null
-        void loadFoodFromApi()
+        void loadSyncedHabitsFromApi()
       }, 400)
     }
     document.addEventListener("visibilitychange", schedule)
@@ -248,7 +275,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("focus", schedule)
       if (debounce) clearTimeout(debounce)
     }
-  }, [isInitialized, apiMode, user?.id, loadFoodFromApi])
+  }, [isInitialized, apiMode, user?.id, loadSyncedHabitsFromApi])
 
   useEffect(() => {
     if (isInitialized) {
@@ -425,31 +452,70 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     return totals
   }, [getDailyMacros])
 
-  const addExercise = useCallback((dayOfWeek: number, exerciseType: string, duration?: number) => {
-    const newExercise: ExerciseEntry = {
-      id: crypto.randomUUID(),
-      dayOfWeek,
-      exerciseType,
-      duration,
-      completed: false,
-    }
-    setExercisePlan((prev) => [...prev, newExercise])
-  }, [])
+  const addExercise = useCallback(
+    async (dayOfWeek: number, exerciseType: string, duration?: number) => {
+      const dur =
+        duration != null && Number.isFinite(duration) && duration >= 1
+          ? Math.trunc(duration)
+          : undefined
+      if (apiMode && user) {
+        const payload: {
+          dayOfWeek: number
+          exerciseType: string
+          completed: boolean
+          duration?: number
+        } = { dayOfWeek, exerciseType, completed: false }
+        if (dur !== undefined) payload.duration = dur
+        const r = await apiPostExerciseEntry(payload)
+        setExercisePlan((prev) => [...prev, wireToExerciseEntry(r)])
+        return
+      }
+      const newExercise: ExerciseEntry = {
+        id: crypto.randomUUID(),
+        dayOfWeek,
+        exerciseType,
+        duration: dur,
+        completed: false,
+      }
+      setExercisePlan((prev) => [...prev, newExercise])
+    },
+    [apiMode, user]
+  )
 
-  const removeExercise = useCallback((id: string) => {
-    setExercisePlan((prev) => prev.filter((e) => e.id !== id))
-  }, [])
+  const removeExercise = useCallback(
+    async (id: string) => {
+      if (apiMode && user) {
+        await apiDeleteExerciseEntry(id)
+      }
+      setExercisePlan((prev) => prev.filter((e) => e.id !== id))
+    },
+    [apiMode, user]
+  )
 
-  const toggleExerciseCompletion = useCallback((id: string) => {
-    const today = new Date().toISOString().split("T")[0]
-    setExercisePlan((prev) =>
-      prev.map((e) =>
-        e.id === id
-          ? { ...e, completed: !e.completed, date: !e.completed ? today : undefined }
-          : e
+  const toggleExerciseCompletion = useCallback(
+    async (id: string) => {
+      const entry = exercisePlanRef.current.find((e) => e.id === id)
+      if (!entry) return
+      const todayStr = localYMD(new Date())
+      const nextCompleted = !entry.completed
+      if (apiMode && user) {
+        const r = await apiPatchExerciseEntry(id, {
+          completed: nextCompleted,
+          date: nextCompleted ? todayStr : null,
+        })
+        setExercisePlan((prev) => prev.map((e) => (e.id === id ? wireToExerciseEntry(r) : e)))
+        return
+      }
+      setExercisePlan((prev) =>
+        prev.map((e) =>
+          e.id === id
+            ? { ...e, completed: nextCompleted, date: nextCompleted ? todayStr : undefined }
+            : e
+        )
       )
-    )
-  }, [])
+    },
+    [apiMode, user]
+  )
 
   const getExercisesForDay = useCallback(
     (dayOfWeek: number) => {

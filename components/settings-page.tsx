@@ -89,11 +89,11 @@ export function SettingsPage() {
       birthday,
       gender,
     })
-    if (Number.isFinite(wk) && wk > 0) {
-      recordWeightKg(wk)
-    }
     if (apiMode) {
       try {
+        if (Number.isFinite(wk) && wk > 0) {
+          await recordWeightKg(wk)
+        }
         const body = profileToApiBody({
           heightM: heightVal,
           weightKg: weightVal,
@@ -116,6 +116,9 @@ export function SettingsPage() {
         )
       }
     } else {
+      if (Number.isFinite(wk) && wk > 0) {
+        await recordWeightKg(wk)
+      }
       toast.success("تم حفظ الإعدادات على جهازك")
       setProfileSaveOk(true)
       saveOkTimer.current = setTimeout(() => {

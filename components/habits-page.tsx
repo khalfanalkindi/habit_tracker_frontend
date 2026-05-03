@@ -30,7 +30,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus, Pencil, Trash2, UtensilsCrossed, Dumbbell, Apple, Scale } from "lucide-react"
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  UtensilsCrossed,
+  Dumbbell,
+  Apple,
+  Scale,
+  CheckCircle2,
+  Circle,
+} from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -106,6 +116,7 @@ export function HabitsPage() {
     getWeeklyMacros,
     addExercise,
     removeExercise,
+    toggleExerciseCompletion,
     getExercisesForDay,
   } = useHabits()
 
@@ -213,15 +224,19 @@ export function HabitsPage() {
     }
   }
 
-  const handleAddExercise = () => {
-    if (newExercise.type) {
-      addExercise(
+  const handleAddExercise = async () => {
+    if (!newExercise.type) return
+    try {
+      await addExercise(
         selectedDay,
         newExercise.type,
-        newExercise.duration ? parseInt(newExercise.duration) : undefined
+        newExercise.duration ? parseInt(newExercise.duration, 10) : undefined
       )
       setNewExercise({ type: "", duration: "" })
       setIsExerciseDialogOpen(false)
+      toast.success("تمت إضافة التمرين")
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "تعذر حفظ التمرين")
     }
   }
 
@@ -922,7 +937,11 @@ export function HabitsPage() {
                       onChange={(e) => setNewExercise({ ...newExercise, duration: e.target.value })}
                     />
                   </div>
-                  <Button onClick={handleAddExercise} className="w-full" disabled={!newExercise.type}>
+                  <Button
+                    onClick={() => void handleAddExercise()}
+                    className="w-full"
+                    disabled={!newExercise.type}
+                  >
                     إضافة
                   </Button>
                 </div>
@@ -951,20 +970,55 @@ export function HabitsPage() {
                   <Card key={exercise.id}>
                     <CardContent className="p-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-xl">
-                          {exerciseType?.icon || "🏃"}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium text-foreground">{exerciseType?.label}</p>
-                          {exercise.duration && (
-                            <p className="text-xs text-muted-foreground">{exercise.duration} دقيقة</p>
+                        <button
+                          type="button"
+                          className="flex flex-1 min-w-0 items-center gap-3 rounded-lg text-right transition-colors hover:bg-muted/50 py-1 -my-1 ps-1 -ms-1"
+                          onClick={() =>
+                            void (async () => {
+                              try {
+                                await toggleExerciseCompletion(exercise.id)
+                              } catch (e: unknown) {
+                                toast.error(
+                                  e instanceof Error ? e.message : "تعذر تحديث حالة التمرين"
+                                )
+                              }
+                            })()
+                          }
+                        >
+                          <div className="w-12 h-12 shrink-0 rounded-xl bg-primary/10 flex items-center justify-center text-xl">
+                            {exerciseType?.icon || "🏃"}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-foreground">{exerciseType?.label}</p>
+                            {exercise.duration ? (
+                              <p className="text-xs text-muted-foreground">
+                                {exercise.duration} دقيقة
+                              </p>
+                            ) : null}
+                          </div>
+                          {exercise.completed ? (
+                            <CheckCircle2 className="w-6 h-6 shrink-0 text-emerald-500" />
+                          ) : (
+                            <Circle className="w-6 h-6 shrink-0 text-muted-foreground" />
                           )}
-                        </div>
+                        </button>
                         <Button
+                          type="button"
                           variant="ghost"
                           size="icon"
-                          onClick={() => removeExercise(exercise.id)}
-                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() =>
+                            void (async () => {
+                              try {
+                                await removeExercise(exercise.id)
+                              } catch (e: unknown) {
+                                toast.error(
+                                  e instanceof Error ? e.message : "تعذر حذف التمرين"
+                                )
+                              }
+                            })()
+                          }
+                          className="text-muted-foreground hover:text-destructive shrink-0"
+                          aria-label="حذف التمرين"
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
