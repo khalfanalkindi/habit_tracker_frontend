@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Plus, Trash2, UtensilsCrossed, Dumbbell, Apple, Scale } from "lucide-react"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
 function formatLocalYMD(d: Date): string {
@@ -130,15 +131,16 @@ export function HabitsPage() {
   const todayFoodLog = getFoodLogForDate(todayDateStr)
   const exercises = getExercisesForDay(selectedDay)
 
-  const handleAddFoodOption = () => {
-    if (newOption.name.trim() && newOption.calories) {
-      addFoodOption({
+  const handleAddFoodOption = async () => {
+    if (!newOption.name.trim() || !newOption.calories) return
+    try {
+      await addFoodOption({
         name: newOption.name.trim(),
-        calories: parseInt(newOption.calories) || 0,
-        protein: parseInt(newOption.protein) || 0,
-        carbs: parseInt(newOption.carbs) || 0,
-        fat: parseInt(newOption.fat) || 0,
-        servingSize: parseInt(newOption.servingSize) || 100,
+        calories: Number(newOption.calories) || 0,
+        protein: Number(newOption.protein) || 0,
+        carbs: Number(newOption.carbs) || 0,
+        fat: Number(newOption.fat) || 0,
+        servingSize: Number(newOption.servingSize) || 100,
         servingUnit: newOption.servingUnit,
       })
       setNewOption({
@@ -151,12 +153,16 @@ export function HabitsPage() {
         servingUnit: "غرام",
       })
       setIsOptionDialogOpen(false)
+      toast.success("تمت إضافة خيار الطعام")
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "تعذر حفظ خيار الطعام")
     }
   }
 
-  const handleAddFoodLog = () => {
-    if (newLogEntry.foodOptionId && newLogEntry.quantity) {
-      addFoodLogEntry(todayDateStr, {
+  const handleAddFoodLog = async () => {
+    if (!newLogEntry.foodOptionId || !newLogEntry.quantity) return
+    try {
+      await addFoodLogEntry(todayDateStr, {
         foodOptionId: newLogEntry.foodOptionId,
         quantity: parseFloat(newLogEntry.quantity) || 1,
         mealType: newLogEntry.mealType,
@@ -167,6 +173,9 @@ export function HabitsPage() {
         mealType: "breakfast",
       })
       setIsLogDialogOpen(false)
+      toast.success("تم تسجيل الوجبة")
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "تعذر تسجيل الوجبة")
     }
   }
 
@@ -383,7 +392,17 @@ export function HabitsPage() {
                                             size="icon"
                                             className="shrink-0 text-muted-foreground hover:text-destructive"
                                             onClick={() =>
-                                              removeFoodLogEntry(panelDateStr, entry.id)
+                                              void (async () => {
+                                                try {
+                                                  await removeFoodLogEntry(panelDateStr, entry.id)
+                                                } catch (e: unknown) {
+                                                  toast.error(
+                                                    e instanceof Error
+                                                      ? e.message
+                                                      : "تعذر حذف الوجبة"
+                                                  )
+                                                }
+                                              })()
                                             }
                                             aria-label="حذف الوجبة"
                                           >
@@ -528,9 +547,9 @@ export function HabitsPage() {
                           />
                         </div>
                       </div>
-                      <Button 
-                        onClick={handleAddFoodOption} 
-                        className="w-full" 
+                      <Button
+                        onClick={() => void handleAddFoodOption()}
+                        className="w-full"
                         disabled={!newOption.name.trim() || !newOption.calories}
                       >
                         إضافة
@@ -582,7 +601,17 @@ export function HabitsPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => removeFoodOption(option.id)}
+                            onClick={() =>
+                              void (async () => {
+                                try {
+                                  await removeFoodOption(option.id)
+                                } catch (e: unknown) {
+                                  toast.error(
+                                    e instanceof Error ? e.message : "تعذر حذف خيار الطعام"
+                                  )
+                                }
+                              })()
+                            }
                             className="text-muted-foreground hover:text-destructive"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -688,9 +717,9 @@ export function HabitsPage() {
                           onChange={(e) => setNewLogEntry({ ...newLogEntry, quantity: e.target.value })}
                         />
                       </div>
-                      <Button 
-                        onClick={handleAddFoodLog} 
-                        className="w-full" 
+                      <Button
+                        onClick={() => void handleAddFoodLog()}
+                        className="w-full"
                         disabled={!newLogEntry.foodOptionId}
                       >
                         تسجيل
@@ -729,7 +758,17 @@ export function HabitsPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => removeFoodLogEntry(todayDateStr, entry.id)}
+                              onClick={() =>
+                                void (async () => {
+                                  try {
+                                    await removeFoodLogEntry(todayDateStr, entry.id)
+                                  } catch (e: unknown) {
+                                    toast.error(
+                                      e instanceof Error ? e.message : "تعذر حذف الوجبة"
+                                    )
+                                  }
+                                })()
+                              }
                               className="text-muted-foreground hover:text-destructive"
                             >
                               <Trash2 className="w-4 h-4" />

@@ -166,3 +166,187 @@ export function profileToApiBody(p: {
     gender: p.gender,
   }
 }
+
+// --- Food options (/api/me/food-options) ---
+
+export type FoodOptionRead = {
+  id: string
+  name: string
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+  servingSize: number
+  servingUnit: string
+}
+
+export function normalizeFoodOption(raw: unknown): FoodOptionRead {
+  if (!raw || typeof raw !== "object") throw new Error("Invalid food option")
+  const o = raw as Record<string, unknown>
+  const id = typeof o.id === "string" ? o.id : ""
+  const name = typeof o.name === "string" ? o.name : ""
+  const calories = num(o.calories ?? o.calories_per_serving) ?? 0
+  const protein = num(o.protein ?? o.protein_g_per_serving) ?? 0
+  const carbs = num(o.carbs ?? o.carbs_g_per_serving) ?? 0
+  const fat = num(o.fat ?? o.fat_g_per_serving) ?? 0
+  const servingSize = num(o.servingSize ?? o.serving_size) ?? 0
+  const servingUnit =
+    typeof o.servingUnit === "string"
+      ? o.servingUnit
+      : typeof o.serving_unit === "string"
+        ? o.serving_unit
+        : ""
+  return { id, name, calories, protein, carbs, fat, servingSize, servingUnit }
+}
+
+export async function apiListFoodOptions(): Promise<FoodOptionRead[]> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const res = await fetch(`${baseUrl}/api/me/food-options`, { headers: authHeaders() })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  if (!Array.isArray(data)) throw new Error("Invalid food options list")
+  return data.map((item) => normalizeFoodOption(item))
+}
+
+export async function apiPostFoodOption(
+  body: Omit<FoodOptionRead, "id">
+): Promise<FoodOptionRead> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const res = await fetch(`${baseUrl}/api/me/food-options`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      name: body.name,
+      calories: body.calories,
+      protein: body.protein,
+      carbs: body.carbs,
+      fat: body.fat,
+      servingSize: body.servingSize,
+      servingUnit: body.servingUnit,
+    }),
+  })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  return normalizeFoodOption(data)
+}
+
+export async function apiPatchFoodOption(
+  id: string,
+  patch: Partial<Omit<FoodOptionRead, "id">>
+): Promise<FoodOptionRead> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const res = await fetch(`${baseUrl}/api/me/food-options/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(patch),
+  })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  return normalizeFoodOption(data)
+}
+
+export async function apiDeleteFoodOption(id: string): Promise<void> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const res = await fetch(`${baseUrl}/api/me/food-options/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  })
+  if (res.status === 204) return
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+}
+
+// --- Food log entries (/api/me/food-log-entries) ---
+
+export type FoodLogEntryRead = {
+  id: string
+  logDate: string
+  foodOptionId: string
+  mealType: string
+  quantity: number
+}
+
+export function normalizeFoodLogEntry(raw: unknown): FoodLogEntryRead {
+  if (!raw || typeof raw !== "object") throw new Error("Invalid food log entry")
+  const o = raw as Record<string, unknown>
+  const id = typeof o.id === "string" ? o.id : ""
+  let logDate = ""
+  const ld = o.logDate ?? o.log_date
+  if (typeof ld === "string") {
+    const m = ld.match(/^(\d{4}-\d{2}-\d{2})/)
+    logDate = m ? m[1] : ld.slice(0, 10)
+  }
+  const foodOptionId =
+    typeof o.foodOptionId === "string"
+      ? o.foodOptionId
+      : typeof o.food_option_id === "string"
+        ? o.food_option_id
+        : ""
+  const mealType =
+    typeof o.mealType === "string"
+      ? o.mealType
+      : typeof o.meal_type === "string"
+        ? o.meal_type
+        : ""
+  const quantity = num(o.quantity) ?? 0
+  return { id, logDate, foodOptionId, mealType, quantity }
+}
+
+export async function apiListFoodLogEntries(params?: {
+  date?: string
+  from?: string
+  to?: string
+}): Promise<FoodLogEntryRead[]> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const sp = new URLSearchParams()
+  if (params?.date) sp.set("date", params.date)
+  if (params?.from) sp.set("from", params.from)
+  if (params?.to) sp.set("to", params.to)
+  const q = sp.toString()
+  const url = `${baseUrl}/api/me/food-log-entries${q ? `?${q}` : ""}`
+  const res = await fetch(url, { headers: authHeaders() })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  if (!Array.isArray(data)) throw new Error("Invalid food log list")
+  return data.map((item) => normalizeFoodLogEntry(item))
+}
+
+export async function apiPostFoodLogEntry(body: {
+  logDate: string
+  foodOptionId: string
+  mealType: string
+  quantity: number
+}): Promise<FoodLogEntryRead> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const res = await fetch(`${baseUrl}/api/me/food-log-entries`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      logDate: body.logDate,
+      foodOptionId: body.foodOptionId,
+      mealType: body.mealType,
+      quantity: body.quantity,
+    }),
+  })
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+  return normalizeFoodLogEntry(data)
+}
+
+export async function apiDeleteFoodLogEntry(id: string): Promise<void> {
+  const { baseUrl, configured } = getApiConfig()
+  if (!configured) throw new Error("API not configured")
+  const res = await fetch(`${baseUrl}/api/me/food-log-entries/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  })
+  if (res.status === 204) return
+  const data: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(errorMessageFromResponse(res, data))
+}
