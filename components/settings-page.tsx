@@ -1,7 +1,7 @@
 "use client"
 
 import { useAuth } from "@/contexts/auth-context"
-import { apiPutProfile } from "@/lib/api"
+import { apiPutProfile, profileToApiBody } from "@/lib/api"
 import { parseProfileBirthday, useProfile, type ProfileGender } from "@/contexts/profile-context"
 import { useTheme } from "next-themes"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,7 +21,7 @@ import { useEffect, useState } from "react"
 
 export function SettingsPage() {
   const { user, logout, apiMode } = useAuth()
-  const { profile, updateProfile, recordWeightKg } = useProfile()
+  const { profile, updateProfile, recordWeightKg, applyServerProfileRead } = useProfile()
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
 
@@ -79,7 +79,7 @@ export function SettingsPage() {
     }
     if (apiMode) {
       try {
-        await apiPutProfile({
+        const body = profileToApiBody({
           heightM: heightVal,
           weightKg: weightVal,
           dailyCaloriesTarget: dcVal,
@@ -87,6 +87,8 @@ export function SettingsPage() {
           birthday,
           gender,
         })
+        const saved = await apiPutProfile(body)
+        applyServerProfileRead(saved)
       } catch {
         setProfileSyncError("تعذر حفظ الملف على الخادم. تحقق من الاتصال.")
       }

@@ -65,12 +65,14 @@ function todayLocalYMD(): string {
   return `${y}-${m}-${day}`
 }
 
-function mergeFromServer(local: UserProfile, server: ProfileRead): UserProfile {
+/** Merge server profile fields into local state (keeps weightHistory and other local-only data). */
+export function mergeUserProfileFromServer(local: UserProfile, server: ProfileRead): UserProfile {
   const g = server.gender === "male" || server.gender === "female" ? server.gender : null
-  const b =
-    typeof server.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(server.birthday)
-      ? server.birthday
-      : null
+  let b: string | null = null
+  if (typeof server.birthday === "string") {
+    const m = server.birthday.match(/^(\d{4}-\d{2}-\d{2})/)
+    if (m) b = m[1]
+  }
   return {
     ...local,
     heightM: server.heightM ?? null,
@@ -115,6 +117,10 @@ type ProfileContextType = {
   /** Records weight for `date` (default today). Syncs `weightKg` to latest. */
   recordWeightKg: (weightKg: number, date?: string) => void
   getLatestWeightKg: () => number | null
+  /** GET /api/me/profile — merges into local profile when online. */
+  refreshProfileFromServer: () => Promise<void>
+  /** Apply a server snapshot (e.g. after PUT) without clearing weight history. */
+  applyServerProfileRead: (server: ProfileRead) => void
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined)
@@ -135,7 +141,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     apiGetProfile()
       .then((server) => {
         if (!cancelled) {
-          setProfileState((prev) => mergeFromServer(prev, server))
+          setProfileState((prev) => mergeUserProfileFromServer(prev, server))
         }
       })
       .catch(() => {
@@ -157,6 +163,20 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   const updateProfile = useCallback((patch: Partial<UserProfile>) => {
     setProfileState((prev) => ({ ...prev, ...patch }))
+  }, [])
+
+  const refreshProfileFromServer = useCallback(async () => {
+    if (!apiMode || !user) return
+    try {
+      const server = await apiGetProfile()
+      setProfileState((prev) => mergeUserProfileFromServer(prev, server))
+    } catch {
+      /* offline */
+    }
+  }, [apiMode, user])
+
+  const applyServerProfileRead = useCallback((server: ProfileRead) => {
+    setProfileState((prev) => mergeUserProfileFromServer(prev, server))
   }, [])
 
   const getLatestWeightKg = useCallback((): number | null => {
@@ -190,8 +210,18 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       updateProfile,
       recordWeightKg,
       getLatestWeightKg,
+      refreshProfileFromServer,
+      applyServerProfileRead,
     }),
-    [profile, setProfile, updateProfile, recordWeightKg, getLatestWeightKg]
+    [
+      profile,
+      setProfile,
+      updateProfile,
+      recordWeightKg,
+      getLatestWeightKg,
+      refreshProfileFromServer,
+      applyServerProfileRead,
+    ]
   )
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>
