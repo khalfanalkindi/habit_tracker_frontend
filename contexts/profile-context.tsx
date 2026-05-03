@@ -13,8 +13,7 @@ import {
   type WeightEntryRead,
 } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
-
-const STORAGE_KEY = "habit-tracker-profile"
+import { profileStorageKey } from "@/lib/client-storage-keys"
 
 export type WeightHistoryEntry = {
   id: string
@@ -111,7 +110,8 @@ function applyProfileAndOptionalWeightHistory(
   server: ProfileRead,
   weightsFromApi: WeightEntryRead[],
 ): UserProfile {
-  let next = mergeUserProfileFromServer(local, server)
+  /** Do not keep another user's local weight rows when merging server data for this account. */
+  let next = mergeUserProfileFromServer({ ...local, weightHistory: [] }, server)
   if (weightsFromApi.length > 0) {
     next = {
       ...next,
@@ -149,10 +149,10 @@ function tailWeightKgFromHistory(h: WeightHistoryEntry[]): number | null {
 
 export type ServerSyncStatus = "idle" | "syncing" | "synced" | "error"
 
-function loadProfile(): UserProfile {
+function loadProfile(storageKey: string): UserProfile {
   if (typeof window === "undefined") return defaultProfile
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(storageKey)
     if (!raw) return defaultProfile
     const parsed = JSON.parse(raw) as Partial<UserProfile>
     return {
@@ -210,9 +210,14 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    setProfileState(loadProfile())
     setReady(true)
   }, [])
+
+  useEffect(() => {
+    if (!ready) return
+    if (apiMode) return
+    setProfileState(loadProfile(profileStorageKey(false, null)))
+  }, [ready, apiMode])
 
   useEffect(() => {
     if (!apiMode) {
@@ -221,15 +226,26 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     }
   }, [apiMode])
 
+  /** Logged out while API is configured — clear UI so the next user does not inherit this profile. */
+  useEffect(() => {
+    if (!ready) return
+    if (!apiMode || user) return
+    setProfileState(defaultProfile)
+    setProfileMergeNotice(null)
+    setServerSyncStatus("idle")
+    setProfileLoadError(null)
+  }, [ready, apiMode, user])
+
   useEffect(() => {
     if (!ready || !apiMode || !user) {
-      setProfileLoadError(null)
-      if (!apiMode || !user) setServerSyncStatus("idle")
+      if (!apiMode || !user) setProfileLoadError(null)
       return
     }
     let cancelled = false
     setProfileLoadError(null)
     setServerSyncStatus("syncing")
+    const key = profileStorageKey(true, user.id)
+    setProfileState(loadProfile(key))
     Promise.all([apiGetProfile(), apiListWeightEntries()])
       .then(([server, weights]) => {
         if (!cancelled) {
@@ -259,18 +275,21 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   /** Same browser, another tab wrote profile to localStorage — reload. */
   useEffect(() => {
     if (!ready) return
+    const key = profileStorageKey(apiMode, user?.id)
     const onStorage = (e: StorageEvent) => {
-      if (e.key !== STORAGE_KEY) return
-      setProfileState(loadProfile())
+      if (e.key !== key) return
+      setProfileState(loadProfile(key))
     }
     window.addEventListener("storage", onStorage)
     return () => window.removeEventListener("storage", onStorage)
-  }, [ready])
+  }, [ready, apiMode, user?.id])
 
   useEffect(() => {
     if (!ready) return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile))
-  }, [profile, ready])
+    if (apiMode && !user) return
+    const key = profileStorageKey(apiMode, user?.id)
+    localStorage.setItem(key, JSON.stringify(profile))
+  }, [profile, ready, apiMode, user?.id])
 
   const setProfile = useCallback((next: UserProfile) => {
     setProfileState(next)

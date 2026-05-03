@@ -20,6 +20,7 @@ import {
   type FoodOptionRead,
 } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
+import { habitsStorageKeys } from "@/lib/client-storage-keys"
 
 // Days of the week in Arabic
 export const DAYS_AR = [
@@ -185,40 +186,52 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     exercisePlanRef.current = exercisePlan
   }, [exercisePlan])
 
+  /** Offline: single shared localStorage bucket (no user id). */
   useEffect(() => {
-    const storedOptions = localStorage.getItem("habit-tracker-food-options")
-    const storedLogs = localStorage.getItem("habit-tracker-food-logs")
-    const storedExercise = localStorage.getItem("habit-tracker-exercise")
-
+    if (apiMode) return
+    const keys = habitsStorageKeys(false, null)
+    const storedOptions = localStorage.getItem(keys.foodOptions)
+    const storedLogs = localStorage.getItem(keys.foodLogs)
+    const storedExercise = localStorage.getItem(keys.exercise)
     if (storedOptions) {
       try {
         setFoodOptions(JSON.parse(storedOptions))
       } catch {
-        localStorage.removeItem("habit-tracker-food-options")
+        localStorage.removeItem(keys.foodOptions)
+        setFoodOptions([])
       }
-    }
-
+    } else setFoodOptions([])
     if (storedLogs) {
       try {
         setFoodLogs(JSON.parse(storedLogs))
       } catch {
-        localStorage.removeItem("habit-tracker-food-logs")
+        localStorage.removeItem(keys.foodLogs)
+        setFoodLogs([])
       }
-    }
-
+    } else setFoodLogs([])
     if (storedExercise) {
       try {
         setExercisePlan(JSON.parse(storedExercise))
       } catch {
-        localStorage.removeItem("habit-tracker-exercise")
+        localStorage.removeItem(keys.exercise)
+        setExercisePlan([])
       }
-    }
-
+    } else setExercisePlan([])
     setIsInitialized(true)
-  }, [])
+  }, [apiMode])
+
+  /** API configured but not logged in — empty state, do not write another user's cache. */
+  useEffect(() => {
+    if (!apiMode || user) return
+    setFoodOptions([])
+    setFoodLogs([])
+    setExercisePlan([])
+    setIsInitialized(true)
+  }, [apiMode, user])
 
   const loadSyncedHabitsFromApi = useCallback(async () => {
     if (!apiMode || !user) return
+    const keys = habitsStorageKeys(true, user.id)
     try {
       const [options, logs, exercises] = await Promise.all([
         apiListFoodOptions(),
@@ -229,13 +242,39 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       setFoodLogs(groupLogsFromApi(logs))
       setExercisePlan(exercises.map(wireToExerciseEntry))
     } catch {
-      /* keep local cache on failure */
+      const o = localStorage.getItem(keys.foodOptions)
+      const l = localStorage.getItem(keys.foodLogs)
+      const ex = localStorage.getItem(keys.exercise)
+      try {
+        if (o) setFoodOptions(JSON.parse(o))
+        else setFoodOptions([])
+      } catch {
+        setFoodOptions([])
+      }
+      try {
+        if (l) setFoodLogs(JSON.parse(l))
+        else setFoodLogs([])
+      } catch {
+        setFoodLogs([])
+      }
+      try {
+        if (ex) setExercisePlan(JSON.parse(ex))
+        else setExercisePlan([])
+      } catch {
+        setExercisePlan([])
+      }
     }
   }, [apiMode, user])
 
+  /** Logged in + API: clear previous account from memory, then hydrate from server (fallback: this user's localStorage). */
   useEffect(() => {
-    if (!isInitialized || !apiMode || !user) return
+    if (!apiMode || !user) return
+    setIsInitialized(true)
+    setFoodOptions([])
+    setFoodLogs([])
+    setExercisePlan([])
     let cancelled = false
+    const keys = habitsStorageKeys(true, user.id)
     void (async () => {
       try {
         const [options, logs, exercises] = await Promise.all([
@@ -249,13 +288,34 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           setExercisePlan(exercises.map(wireToExerciseEntry))
         }
       } catch {
-        /* keep hydrated localStorage data */
+        if (cancelled) return
+        const o = localStorage.getItem(keys.foodOptions)
+        const l = localStorage.getItem(keys.foodLogs)
+        const ex = localStorage.getItem(keys.exercise)
+        try {
+          if (o) setFoodOptions(JSON.parse(o))
+          else setFoodOptions([])
+        } catch {
+          setFoodOptions([])
+        }
+        try {
+          if (l) setFoodLogs(JSON.parse(l))
+          else setFoodLogs([])
+        } catch {
+          setFoodLogs([])
+        }
+        try {
+          if (ex) setExercisePlan(JSON.parse(ex))
+          else setExercisePlan([])
+        } catch {
+          setExercisePlan([])
+        }
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [isInitialized, apiMode, user?.id])
+  }, [apiMode, user?.id])
 
   useEffect(() => {
     if (!isInitialized || !apiMode || !user) return
@@ -275,25 +335,28 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("focus", schedule)
       if (debounce) clearTimeout(debounce)
     }
-  }, [isInitialized, apiMode, user?.id, loadSyncedHabitsFromApi])
+  }, [isInitialized, apiMode, user, loadSyncedHabitsFromApi])
 
   useEffect(() => {
-    if (isInitialized) {
-      localStorage.setItem("habit-tracker-food-options", JSON.stringify(foodOptions))
-    }
-  }, [foodOptions, isInitialized])
+    if (!isInitialized) return
+    if (apiMode && !user) return
+    const keys = habitsStorageKeys(apiMode, user?.id)
+    localStorage.setItem(keys.foodOptions, JSON.stringify(foodOptions))
+  }, [foodOptions, isInitialized, apiMode, user?.id])
 
   useEffect(() => {
-    if (isInitialized) {
-      localStorage.setItem("habit-tracker-food-logs", JSON.stringify(foodLogs))
-    }
-  }, [foodLogs, isInitialized])
+    if (!isInitialized) return
+    if (apiMode && !user) return
+    const keys = habitsStorageKeys(apiMode, user?.id)
+    localStorage.setItem(keys.foodLogs, JSON.stringify(foodLogs))
+  }, [foodLogs, isInitialized, apiMode, user?.id])
 
   useEffect(() => {
-    if (isInitialized) {
-      localStorage.setItem("habit-tracker-exercise", JSON.stringify(exercisePlan))
-    }
-  }, [exercisePlan, isInitialized])
+    if (!isInitialized) return
+    if (apiMode && !user) return
+    const keys = habitsStorageKeys(apiMode, user?.id)
+    localStorage.setItem(keys.exercise, JSON.stringify(exercisePlan))
+  }, [exercisePlan, isInitialized, apiMode, user?.id])
 
   const addFoodOption = useCallback(
     async (food: Omit<FoodOption, "id">) => {
