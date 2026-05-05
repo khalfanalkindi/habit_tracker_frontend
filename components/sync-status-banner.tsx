@@ -48,7 +48,7 @@ export function SyncStatusBanner() {
         {serverSyncStatus === "synced" && !profileLoadError ? (
           <>
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span>متصل — آخر تحميل من  تم بنجاح</span>
+            <span>متصل —آخر تحميل تم بنجاح</span>
           </>
         ) : null}
         {serverSyncStatus === "error" || profileLoadError ? (
