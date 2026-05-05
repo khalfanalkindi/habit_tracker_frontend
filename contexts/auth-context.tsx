@@ -135,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return {
           ok: false,
           message:
-            "لم يُحمّل عنوان الخادم أو الرمز. في Railway تأكد من NEXT_PUBLIC_API_URL و NEXT_PUBLIC_API_KEY (نفس APP_TOKEN في الخادم) ثم أعد نشر الواجهة.",
+            "لم يُحمّل عنوان  أو الرمز. في Railway تأكد من NEXT_PUBLIC_API_URL و NEXT_PUBLIC_API_KEY (نفس APP_TOKEN في ) ثم أعد نشر الواجهة.",
         }
       }
       try {
@@ -152,7 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
         return { ok: true }
       } catch (e) {
-        const message = e instanceof Error ? e.message : "تعذر الاتصال بالخادم"
+        const message = e instanceof Error ? e.message : "تعذر الاتصال ب"
         return { ok: false, message }
       }
     },

@@ -123,7 +123,7 @@ export function HabitsWeightCard() {
           <p className="text-sm text-muted-foreground leading-relaxed">
             {apiMode
               ? "سجّل وزنك اليومي هنا؛ يُحفظ على حسابك ويظهر في الملف الشخصي."
-              : "سجّل وزنك اليومي هنا؛ يُحفظ على جهازك حتى تسجّل الدخول لمزامنة الخادم."}
+              : "سجّل وزنك اليومي هنا؛ يُحفظ على جهازك حتى تسجّل الدخول لمزامنة ."}
           </p>
           <div className="flex flex-col items-center gap-3 py-2">
             <p className="text-xs text-muted-foreground">آخر وزن مسجّل</p>

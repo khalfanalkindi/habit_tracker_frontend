@@ -130,7 +130,7 @@ export function SettingsPage() {
         }, 5000)
       } catch (e: unknown) {
         setProfileSyncError(
-          e instanceof Error ? e.message : "تعذر حفظ الملف على الخادم. تحقق من الاتصال.",
+          e instanceof Error ? e.message : "تعذر حفظ الملف على . تحقق من الاتصال.",
         )
       }
     } else {
@@ -231,7 +231,7 @@ export function SettingsPage() {
             تُستخدم الطول والوزن والأهداف في لوحة التحكم (مؤشر كتلة الجسم، تنبيه السعرات). تاريخ الميلاد والجنس
             للملف فقط ولا يظهران في لوحة التحكم.
             {apiMode
-              ? " تُحفظ محلياً وتُزامن مع الخادم عند الضغط على حفظ."
+              ? " تُحفظ محلياً وتُزامن مع  عند الضغط على حفظ."
               : " تُحفظ على جهازك فقط حالياً."}
           </p>
           <div className="grid gap-3">

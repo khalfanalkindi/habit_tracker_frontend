@@ -137,7 +137,7 @@ function computeWeightMergeNotice(
   if (apiHist.length === 0 || localHist.length === 0) return null
   const apiAs = apiHist.map((w) => ({ date: w.date, weightKg: w.weightKg }))
   if (weightHistoryFingerprint(localHist) === weightHistoryFingerprint(apiAs)) return null
-  return "سجل الوزن المحلي يختلف عن الخادم — تم اعتماد بيانات الخادم."
+  return "سجل الوزن المحلي يختلف عن  — تم اعتماد بيانات ."
 }
 
 function tailWeightKgFromHistory(h: WeightHistoryEntry[]): number | null {
@@ -262,7 +262,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       .catch((e: unknown) => {
         if (!cancelled) {
           setProfileLoadError(
-            e instanceof Error ? e.message : "فشل تحميل الملف الشخصي من الخادم",
+            e instanceof Error ? e.message : "فشل تحميل الملف الشخصي من ",
           )
           setServerSyncStatus("error")
         }
@@ -314,7 +314,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       setProfileMergeNotice(notice)
       setServerSyncStatus("synced")
     } catch (e: unknown) {
-      setProfileLoadError(e instanceof Error ? e.message : "فشل تحميل الملف الشخصي من الخادم")
+      setProfileLoadError(e instanceof Error ? e.message : "فشل تحميل الملف الشخصي من ")
       setServerSyncStatus("error")
     }
   }, [apiMode, user])
