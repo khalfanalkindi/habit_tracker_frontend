@@ -112,7 +112,7 @@ export function HabitsWeightCard() {
 
   return (
     <>
-      <Card className="border-violet-500/25 bg-gradient-to-l from-violet-500/10 to-transparent">
+      <Card className="border-violet-500/25 bg-linear-to-l from-violet-500/10 to-transparent">
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <Scale className="w-4 h-4 text-violet-500" />
